@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Notar — melody composer</title>
+	<meta name="description" content="Compose and play melodies in the browser with a scrolling staff and Web Audio playback.">
+	<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+	<div class="page">
+		<header class="hero">
+			<h1>Notar</h1>
+			<p>
+				A browser-based melody composer. Add notes on a scrolling staff, set tempo and note length,
+				then play your tune with precise Web Audio timing. Uses Nordic pitch names (H = B).
+			</p>
+		</header>
+
+		<section class="panel">
+			<h2>Playback</h2>
+			<div class="controls-grid">
+				<div class="control">
+					<label for="volume">Volume</label>
+					<output id="volumeLabel" for="volume">35%</output>
+					<input id="volume" type="range" min="0" max="1" step="0.01" value="0.35">
+				</div>
+				<div class="control">
+					<label for="duration">Note length</label>
+					<output id="durationLabel" for="duration">1/4</output>
+					<input id="duration" type="range" min="0" max="3" step="1" value="2">
+				</div>
+				<div class="control">
+					<label for="bpm">Tempo</label>
+					<output id="bpmLabel" for="bpm">96 BPM</output>
+					<input id="bpm" type="range" min="40" max="220" step="1" value="96">
+				</div>
+			</div>
+
+			<div class="transport" style="margin-top: 1rem;">
+				<button id="playBtn" class="primary" type="button">Play</button>
+				<button id="stopBtn" class="secondary" type="button">Stop</button>
+				<button id="undoBtn" class="secondary" type="button">Undo</button>
+				<button id="clearBtn" class="danger" type="button">Clear</button>
+				<button id="loopBtn" class="icon-toggle" type="button" aria-pressed="false" title="Loop playback">
+					<img src="assets/repeat.svg" alt="" aria-hidden="true">
+				</button>
+				<button id="exportBtn" class="secondary" type="button">Export</button>
+				<button id="importBtn" class="secondary" type="button">Import</button>
+				<input id="importInput" type="file" accept="application/json,.json" hidden>
+			</div>
+			<p id="status" class="status" aria-live="polite"></p>
+		</section>
+
+		<section class="panel">
+			<h2>Piano</h2>
+			<div id="piano" class="piano" aria-label="Note input"></div>
+		</section>
+
+		<section class="panel staff-panel">
+			<div class="staff-toolbar">
+				<p id="noteCount">0 notes</p>
+				<p>Shortcuts: A–J for notes, space for rest, Enter play, Esc stop, Backspace undo</p>
+			</div>
+			<div id="staffScroll" class="staff-scroll">
+				<svg id="staffSvg" role="img" aria-label="Sheet music staff"></svg>
+			</div>
+		</section>
+
+		<footer class="page-footer">
+			<span>Originally by Elias B. Vågan, 2016 — rebuilt 2026</span>
+			<a href="/">Back to home</a>
+		</footer>
+	</div>
+
+	<script src="app.js"></script>
+</body>
+</html>
