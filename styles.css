@@ -1,14 +1,23 @@
 :root {
 	--ink: #1a1a1a;
-	--muted: #5a5a5a;
+	--muted: #595966;
 	--paper: #fffef8;
 	--panel: #fafafa;
 	--border: #d2d2f2;
 	--border-strong: #9999cc;
-	--accent: #4a5a8a;
+	--accent: #3b4a7a;
+	--accent-hover: #2d3a63;
 	--accent-soft: #eef0fa;
-	--danger: #8a3a3a;
+	--region: #e8eaf4;
+	--danger: #9b2c2c;
+	--danger-soft: #fdf1f1;
+	--focus: #3b4a7a;
 	--shadow: 0 10px 30px rgba(40, 40, 80, 0.08);
+	/* One rhythm for the whole control system: tight inside a group, loose between groups. */
+	--gap-in: 0.25rem;
+	--gap-between: 1rem;
+	--radius: 10px;
+	--control-h: 2.75rem; /* 44px — minimum touch target */
 	color-scheme: light;
 }
 
@@ -35,6 +44,9 @@ label,
 .piano,
 .piano button,
 .transport,
+.region,
+.btn,
+.segmented label,
 .staff-scroll,
 #staffSvg,
 .note-group {
@@ -67,6 +79,15 @@ a {
 	color: var(--accent);
 }
 
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
 .page {
 	max-width: 64rem;
 	margin: 0 auto;
@@ -92,129 +113,280 @@ a {
 .panel {
 	background: var(--panel);
 	border: 2px solid var(--border);
-	border-radius: 6px;
+	border-radius: 12px;
 	padding: 1.25rem;
 	margin-bottom: 1.25rem;
 	box-shadow: var(--shadow);
 }
 
 .panel h2 {
-	margin: 0 0 1rem;
-	font-size: 0.85rem;
+	margin: 0 0 0.85rem;
+	font-size: 0.8rem;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
-	color: #777;
+	color: var(--muted);
 	font-weight: 600;
+	line-height: var(--control-h);
+	height: var(--control-h);
 }
 
-.controls-grid {
+/* ── Common region ─────────────────────────────────────────────────────────
+ * A region is a soft tinted tray: controls that belong together share one,
+ * and nothing else is drawn around them. Same tray everywhere = same meaning. */
+.region {
+	display: flex;
+	align-items: center;
+	gap: var(--gap-in);
+	padding: var(--gap-in);
+	background: var(--region);
+	border: 1px solid #d8dae8;
+	border-radius: calc(var(--radius) + var(--gap-in));
+}
+
+/* ── Buttons: one shape, one height; colour and fill encode role ─────────── */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.45rem;
+	min-height: var(--control-h);
+	min-width: var(--control-h);
+	padding: 0 1rem;
+	font-family: inherit;
+	font-size: 0.95rem;
+	font-weight: 600;
+	line-height: 1;
+	color: var(--ink);
+	background: #fff;
+	border: 1.5px solid var(--border);
+	border-radius: var(--radius);
+	cursor: pointer;
+	transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+
+.btn .icon {
+	width: 1.15rem;
+	height: 1.15rem;
+	flex: none;
+}
+
+.btn:hover {
+	border-color: var(--border-strong);
+	background: var(--accent-soft);
+}
+
+.btn:active {
+	transform: translateY(1px);
+}
+
+.btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	transform: none;
+}
+
+.btn:disabled:hover {
+	background: #fff;
+	border-color: var(--border);
+}
+
+/* Primary — the focal point. Only Play gets a solid fill, extra width and weight. */
+.btn.primary {
+	min-height: 3.25rem;
+	padding: 0 1.6rem;
+	font-size: 1.05rem;
+	color: #fff;
+	background: var(--accent);
+	border-color: var(--accent);
+	box-shadow: 0 4px 14px rgba(59, 74, 122, 0.3);
+}
+
+.btn.primary .icon {
+	width: 1.3rem;
+	height: 1.3rem;
+}
+
+.btn.primary:hover {
+	background: var(--accent-hover);
+	border-color: var(--accent-hover);
+}
+
+.btn.primary:disabled:hover {
+	background: var(--accent);
+	border-color: var(--accent);
+}
+
+/* Toggle — same shape as its neighbours; "on" borrows the accent so state reads at a glance. */
+.btn.toggle[aria-pressed="true"] {
+	color: var(--accent);
+	background: var(--accent-soft);
+	border-color: var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.btn.icon-only {
+	padding: 0;
+}
+
+/* Quiet — secondary actions inside a segmented tray: no outline of their own, the tray is the outline. */
+.btn.quiet {
+	background: transparent;
+	border-color: transparent;
+}
+
+.btn.quiet:hover {
+	background: #fff;
+	border-color: var(--border);
+}
+
+/* Destructive — the only red in the interface. */
+.btn.danger {
+	color: var(--danger);
+}
+
+.btn.danger:hover {
+	background: var(--danger-soft);
+	border-color: #e2b4b4;
+}
+
+/* ── Focus: always visible, same ring on every control ──────────────────── */
+.btn:focus-visible,
+.key:focus-visible,
+.segmented input:focus-visible + span,
+input[type="range"]:focus-visible,
+a:focus-visible {
+	outline: 3px solid var(--focus);
+	outline-offset: 2px;
+}
+
+/* ── Playback bar: transport tray | mix tray, on one baseline ───────────── */
+.playback-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: stretch;
+	gap: var(--gap-between);
+}
+
+.transport {
+	flex: none;
+}
+
+.mix {
+	flex: 1 1 22rem;
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-	gap: 1rem;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.5rem 1.5rem;
+	padding: 0.4rem 1rem;
 }
 
 .control {
 	display: flex;
 	flex-direction: column;
-	gap: 0.45rem;
+	justify-content: center;
+	gap: 0.1rem;
+	min-width: 0;
 }
 
-.control label {
-	font-size: 0.95rem;
+.control-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 0.5rem;
+}
+
+.control label,
+.length-picker legend {
+	font-size: 0.9rem;
 	font-weight: 600;
 }
 
 .control output {
 	font-variant-numeric: tabular-nums;
 	color: var(--muted);
-	font-size: 0.92rem;
+	font-size: 0.9rem;
 }
 
 input[type="range"] {
 	width: 100%;
+	height: 1.75rem;
+	margin: 0;
 	accent-color: var(--accent);
+	cursor: pointer;
 }
 
-.transport {
+/* ── Compose: heading and note length share the row above the keys ──────── */
+.panel-head {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 0.65rem;
+	justify-content: space-between;
 	align-items: center;
+	gap: 0.5rem var(--gap-between);
+	margin-bottom: 0.85rem;
 }
 
-button {
-	font-family: inherit;
-	font-size: 0.98rem;
-	font-weight: 600;
-	border: 2px solid transparent;
-	border-radius: 4px;
-	padding: 0.7rem 1.1rem;
-	cursor: pointer;
-	transition: background 0.15s, border-color 0.15s, transform 0.1s;
+.panel-head h2 {
+	margin: 0;
 }
 
-button:active {
-	transform: translateY(1px);
-}
-
-button.primary {
-	background: var(--ink);
-	color: #fff;
-}
-
-button.primary:hover {
-	background: #000;
-}
-
-button.secondary {
-	background: #fff;
-	color: var(--ink);
-	border-color: var(--border);
-}
-
-button.secondary:hover {
-	border-color: var(--border-strong);
-	background: var(--accent-soft);
-}
-
-button.danger {
-	background: #fff;
-	color: var(--danger);
-	border-color: #e8caca;
-}
-
-button.danger:hover {
-	background: #fff5f5;
-	border-color: #d9a0a0;
-}
-
-button.icon-toggle {
-	width: 3rem;
-	height: 3rem;
+.length-picker {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin: 0;
 	padding: 0;
+	border: 0;
+	min-width: 0;
+}
+
+.length-picker legend {
+	float: left;
+	padding: 0;
+	color: var(--ink);
+}
+
+/* Segmented control: one tray, options inside it, the chosen one lifts out as a white chip. */
+.segmented label {
+	position: relative;
+	display: flex;
+}
+
+.segmented input {
+	position: absolute;
+	opacity: 0;
+	inset: 0;
+	margin: 0;
+	cursor: pointer;
+}
+
+.segmented label span {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	min-width: 3.25rem;
+	min-height: var(--control-h);
+	padding: 0 0.75rem;
+	border: 1.5px solid transparent;
+	border-radius: var(--radius);
+	font-size: 0.95rem;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	color: var(--muted);
+	cursor: pointer;
+	transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.segmented label:hover span {
+	color: var(--ink);
+}
+
+.segmented input:checked + span {
+	color: var(--accent);
 	background: #fff;
-	border-color: var(--border);
-}
-
-button.icon-toggle[aria-pressed="true"] {
-	background: var(--accent-soft);
 	border-color: var(--border-strong);
+	box-shadow: 0 1px 3px rgba(40, 40, 80, 0.12);
 }
 
-button.icon-toggle img {
-	width: 1.2rem;
-	height: 1.2rem;
-	opacity: 0.8;
-}
-
-button:disabled {
-	opacity: 0.45;
-	cursor: not-allowed;
-}
-
+/* ── Piano: seven equal pitch keys + one visibly different rest key ─────── */
 .piano {
 	display: grid;
 	grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -222,15 +394,22 @@ button:disabled {
 }
 
 .piano button {
-	padding: 1rem 0.5rem;
 	min-height: 4.5rem;
+	padding: 0.75rem 0.25rem;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	gap: 0.2rem;
+	gap: 0.3rem;
+	font-family: inherit;
+	font-weight: 600;
+	color: var(--ink);
 	background: #fff;
-	border: 2px solid var(--border);
+	border: 1.5px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: 0 2px 0 var(--border);
+	cursor: pointer;
+	transition: background-color 0.15s, border-color 0.15s, box-shadow 0.1s, transform 0.1s;
 }
 
 .piano button:hover {
@@ -238,21 +417,47 @@ button:disabled {
 	background: var(--accent-soft);
 }
 
+.piano button:active {
+	transform: translateY(2px);
+	box-shadow: 0 0 0 var(--border);
+}
+
 .piano button .pitch {
-	font-size: 1.35rem;
+	font-size: 1.4rem;
 	line-height: 1;
+	height: 1.4rem;
+	display: flex;
+	align-items: center;
 }
 
 .piano button .hint {
-	font-size: 0.72rem;
+	min-width: 1.4rem;
+	padding: 0.05rem 0.35rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 0.68rem;
+	font-weight: 500;
+	line-height: 1.4;
 	color: var(--muted);
-	font-weight: 400;
+	background: var(--region);
+	border-radius: 4px;
 }
 
+/* Rest looks like the rest drawn on the staff — same symbol in both places. */
 .piano button.rest {
-	background: #f3f3f3;
+	background: #f6f6f8;
+	border-style: dashed;
+	box-shadow: none;
 }
 
+.rest-glyph {
+	width: 1.5rem;
+	height: 0.75rem;
+	fill: #888;
+	stroke: #666;
+	stroke-width: 1.2;
+}
+
+/* ── Staff panel: meta on the left, edit + file trays on the right ──────── */
 .staff-panel {
 	padding: 0;
 	overflow: hidden;
@@ -260,18 +465,30 @@ button:disabled {
 
 .staff-toolbar {
 	display: flex;
+	flex-wrap: wrap;
 	justify-content: space-between;
 	align-items: center;
-	gap: 1rem;
-	padding: 0.85rem 1.1rem;
+	gap: 0.75rem var(--gap-between);
+	padding: 0.75rem 1rem;
 	border-bottom: 2px solid var(--border);
 	background: #fff;
 }
 
-.staff-toolbar p {
+.toolbar-groups {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--gap-between);
+}
+
+.meta {
 	margin: 0;
 	color: var(--muted);
 	font-size: 0.92rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.actions .btn {
+	padding: 0 0.85rem;
 }
 
 .staff-scroll {
@@ -346,25 +563,59 @@ button:disabled {
 	stroke-width: 1;
 }
 
-.status {
-	min-height: 1.25rem;
-	font-size: 0.92rem;
+.staff-footer {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 0.25rem var(--gap-between);
+	padding: 0.6rem 1rem;
+	border-top: 2px solid var(--border);
+	background: #fff;
+}
+
+.staff-footer p {
+	margin: 0;
+	font-size: 0.88rem;
 	color: var(--muted);
-	margin-top: 0.75rem;
+}
+
+.status {
+	min-height: 1.3rem;
 }
 
 .status.error {
 	color: var(--danger);
 }
 
+kbd {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 0.75rem;
+	padding: 0.05rem 0.3rem;
+	background: var(--region);
+	border-radius: 4px;
+}
+
 .page-footer {
 	margin-top: 2rem;
 	font-size: 0.9rem;
-	color: #888;
+	color: #6b6b6b;
 	display: flex;
 	justify-content: space-between;
 	gap: 1rem;
 	flex-wrap: wrap;
+}
+
+/* Keyboard hints are noise on a touchscreen — drop them there (Prägnanz). */
+@media (hover: none) and (pointer: coarse) {
+	.shortcuts,
+	.piano button .hint {
+		display: none;
+	}
+
+	.piano button {
+		min-height: 3.75rem;
+	}
 }
 
 @media (max-width: 720px) {
@@ -372,11 +623,66 @@ button:disabled {
 		font-size: 2rem;
 	}
 
+	.page {
+		padding-inline: 1rem;
+	}
+
+	.panel {
+		padding: 1rem;
+	}
+
 	.piano {
 		grid-template-columns: repeat(4, minmax(0, 1fr));
 	}
 
-	.transport button {
-		flex: 1 1 calc(50% - 0.65rem);
+	/* Transport spans the width; Play takes the lion's share. */
+	.transport {
+		flex: 1 1 100%;
+	}
+
+	.transport .btn.primary {
+		flex: 1 1 auto;
+	}
+
+	.mix {
+		grid-template-columns: 1fr;
+		padding: 0.5rem 0.9rem;
+	}
+
+	input[type="range"] {
+		height: var(--control-h);
+	}
+
+	.length-picker {
+		flex: 1 1 100%;
+		justify-content: space-between;
+	}
+
+	.segmented label span {
+		min-width: 3rem;
+		padding: 0 0.5rem;
+	}
+
+	.toolbar-groups,
+	.toolbar-groups .region {
+		flex: 1 1 100%;
+	}
+
+	.toolbar-groups .btn {
+		flex: 1 1 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition: none !important;
+		animation: none !important;
+	}
+
+	.btn:active,
+	.piano button:active {
+		transform: none;
 	}
 }

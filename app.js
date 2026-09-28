@@ -82,7 +82,12 @@
 		staffScroll: document.getElementById("staffScroll"),
 		noteCount: document.getElementById("noteCount"),
 		status: document.getElementById("status"),
+		durationPicker: document.getElementById("durationPicker"),
 	};
+
+	const reduceMotion = window.matchMedia
+		? window.matchMedia("(prefers-reduced-motion: reduce)")
+		: { matches: false };
 
 	const state = {
 		notes: [],
@@ -206,7 +211,7 @@
 
 	function flashPianoKey(pitch) {
 		const button = ui.piano.querySelector(`[data-pitch="${pitch}"]`);
-		if (!button) {
+		if (!button || reduceMotion.matches || !button.animate) {
 			return;
 		}
 		button.animate(
@@ -229,10 +234,10 @@
 		for (const entry of entries) {
 			const button = document.createElement("button");
 			button.type = "button";
-			button.className = entry.pitch === "rest" ? "rest" : "";
+			button.className = entry.pitch === "rest" ? "key rest" : "key";
 			button.dataset.pitch = entry.pitch;
 			button.innerHTML = entry.pitch === "rest"
-				? `<span class="pitch">&#9837;</span><span class="hint">pause</span>`
+				? `<span class="pitch" aria-hidden="true"><svg class="rest-glyph" viewBox="0 0 24 12"><rect x="2" y="2" width="20" height="8" rx="2"/></svg></span><span class="hint">space</span><span class="sr-only">Rest</span>`
 				: `<span class="pitch">${entry.pitch}</span><span class="hint">${entry.hint}</span>`;
 			button.addEventListener("click", () => addNote(entry.pitch));
 			ui.piano.appendChild(button);
@@ -572,7 +577,29 @@
 		reader.readAsText(file);
 	}
 
+	// The segmented note-length control mirrors the (hidden) #duration slider,
+	// which remains the single source of truth the rest of the app reads.
+	function syncDurationPicker() {
+		if (!ui.durationPicker) {
+			return;
+		}
+		const radio = ui.durationPicker.querySelector(`input[value="${ui.duration.value}"]`);
+		if (radio) {
+			radio.checked = true;
+		}
+	}
+
 	function bindControls() {
+		if (ui.durationPicker) {
+			ui.durationPicker.addEventListener("change", (event) => {
+				if (event.target.name !== "durationPick") {
+					return;
+				}
+				ui.duration.value = event.target.value;
+				ui.duration.dispatchEvent(new Event("input", { bubbles: true }));
+			});
+		}
+
 		ui.volume.addEventListener("input", () => {
 			state.volume = Number(ui.volume.value);
 			ui.volumeLabel.textContent = `${Math.round(state.volume * 100)}%`;
@@ -586,6 +613,7 @@
 			const index = Number(ui.duration.value);
 			state.selectedDuration = DURATIONS[index].value;
 			ui.durationLabel.textContent = DURATIONS[index].label;
+			syncDurationPicker();
 			saveToStorage();
 		});
 
@@ -651,6 +679,7 @@
 		const durationIndex = DURATIONS.findIndex((entry) => entry.value === state.selectedDuration);
 		ui.duration.value = String(durationIndex >= 0 ? durationIndex : 2);
 		ui.durationLabel.textContent = durationLabel(state.selectedDuration);
+		syncDurationPicker();
 		ui.volume.value = String(state.volume);
 		ui.volumeLabel.textContent = `${Math.round(state.volume * 100)}%`;
 		ui.bpmLabel.textContent = `${state.bpm} BPM`;
