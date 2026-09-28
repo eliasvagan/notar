@@ -16,6 +16,44 @@
 	box-sizing: border-box;
 }
 
+/*
+ * Rapid taps on the piano keys and transport buttons were triggering
+ * double-tap-to-zoom on phones (iOS Safari in particular). `manipulation`
+ * disables only double-tap zoom — panning and pinch-to-zoom keep working,
+ * so the page stays zoomable for accessibility. It also drops the legacy
+ * ~300ms click delay, so fast note entry registers every tap.
+ */
+html,
+body,
+button,
+a,
+input,
+select,
+textarea,
+label,
+[role="button"],
+.piano,
+.piano button,
+.transport,
+.staff-scroll,
+#staffSvg,
+.note-group {
+	touch-action: manipulation;
+}
+
+button,
+[role="button"],
+.piano button {
+	-webkit-tap-highlight-color: transparent;
+}
+
+/* iOS zooms in on focus when a text field's font-size is below 16px. */
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select,
+textarea {
+	font-size: max(16px, 1rem);
+}
+
 body {
 	margin: 0;
 	font-family: Georgia, "Times New Roman", serif;
