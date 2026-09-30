@@ -30,6 +30,10 @@
 	box-sizing: border-box;
 }
 
+[hidden] {
+	display: none !important;
+}
+
 /*
  * Rapid taps on the piano keys and transport buttons were triggering
  * double-tap-to-zoom on phones (iOS Safari in particular). `manipulation`
@@ -71,8 +75,18 @@ textarea {
 	font-size: max(16px, 1rem);
 }
 
+/* No rubber-band bounce or scroll chaining: installed, Notar should feel like an app, not a page. The
+ * background matches the page so an edge never shows a different colour. Pinch-zoom stays (accessibility). */
+html {
+	overscroll-behavior: none;
+	background: #f7f7fb;
+}
+
 body {
 	margin: 0;
+	/* viewport-fit=cover: keep content clear of the notch, rounded corners and home indicator. */
+	padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+	overscroll-behavior: none;
 	font-family: Georgia, "Times New Roman", serif;
 	background: linear-gradient(180deg, #ffffff 0%, #f7f7fb 100%);
 	color: var(--ink);
@@ -105,8 +119,16 @@ a {
 	margin-bottom: 2rem;
 }
 
-.hero h1 {
+.hero-top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
 	margin: 0 0 0.35rem;
+}
+
+.hero h1 {
+	margin: 0;
 	font-size: 2.4rem;
 	letter-spacing: -0.02em;
 }
@@ -115,6 +137,23 @@ a {
 	margin: 0;
 	color: var(--muted);
 	max-width: 38rem;
+}
+
+/* A new version is ready (pwa.js; hidden while playing). Quiet: the accent colour, one slow nudge, no modal. */
+.update-hint {
+	flex: none;
+	color: var(--accent);
+	font-size: 0.9rem;
+}
+
+.update-hint .icon {
+	animation: update-nudge 2.4s ease-in-out 3;
+}
+
+@keyframes update-nudge {
+	0%, 70%, 100% { transform: none; }
+	80% { transform: translateY(2px); }
+	90% { transform: translateY(-1px); }
 }
 
 .panel {

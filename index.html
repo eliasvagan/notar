@@ -2,10 +2,20 @@
 <html lang="no">
 <head>
 	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 	<title>Notar — melody composer</title>
 	<meta name="description" content="Compose and play melodies in the browser with a scrolling staff and Web Audio playback.">
-	<link rel="icon" href="data:,">
+	<meta name="theme-color" content="#3b4a7a">
+	<meta name="application-name" content="Notar">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-title" content="Notar">
+	<meta name="apple-mobile-web-app-status-bar-style" content="default">
+	<meta name="format-detection" content="telephone=no">
+	<link rel="manifest" href="manifest.webmanifest">
+	<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+	<link rel="icon" href="favicon.svg" type="image/svg+xml">
+	<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" sizes="180x180">
 	<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
@@ -22,12 +32,19 @@
 		<symbol id="i-import" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></g></symbol>
 		<symbol id="i-export" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></g></symbol>
 		<symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+		<symbol id="i-update" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"/><path d="m7.5 9.5 4.5 4.5 4.5-4.5"/><path d="M5 20h14"/></g></symbol>
 		<symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 	</svg>
 
 	<div class="page">
 		<header class="hero">
-			<h1>Notar</h1>
+			<div class="hero-top">
+				<h1>Notar</h1>
+				<!-- pwa.js shows this when a new version has downloaded; never while playing. Tapping reloads into it. -->
+				<button id="updateBtn" class="btn quiet update-hint" type="button" hidden title="A new version of Notar is ready. Your composition is saved; tap to reload into it.">
+					<svg class="icon" aria-hidden="true"><use href="#i-update"/></svg><span>Update ready</span>
+				</button>
+			</div>
 			<p>
 				A browser-based melody composer. Add notes on a scrolling staff, set tempo and note length,
 				then play your tune with precise Web Audio timing. Four octaves, C2 to C6, on a grand staff.
@@ -171,5 +188,6 @@
 	</div>
 
 	<script src="app.js?v=4"></script>
+	<script src="pwa.js"></script>
 </body>
 </html>

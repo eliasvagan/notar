@@ -10,6 +10,18 @@ Browser-based melody composer with scrolling grand-staff notation and Web Audio 
 - The keyboard is one continuous row of octave groups; it scrolls horizontally
   (with an octave switcher) when it does not fit, and shows every octave on wide screens.
 
+## Installable app
+
+Notar installs as an app (Add to Home Screen / Install) and works fully offline: `sw.js` precaches the whole
+shell in a cache named after `VERSION`, a hash of the shell files, and serves it cache-first; activation deletes
+older caches. After any change to a shell file run `node scripts/sw-version.mjs` (the unit test fails otherwise).
+A new version downloads in the background and is applied at launch before anything is touched, or from the
+quiet "Update ready" hint in the header, which never shows while playing. Compositions are saved on every
+change, so that reload loses nothing. Audio starts on the first Play (browsers need a tap after launch).
+
+Icons (`favicon.svg`, `favicon.ico`, `icons/`) are drawn by `node scripts/icons.mjs` from the keyboard's own
+colours in `styles.css`.
+
 ## Shortcuts
 
 | Key | Action |
@@ -33,7 +45,9 @@ Then open `http://localhost:8000`.
 ## Tests
 
 ```bash
-node tests/smoke.cjs
+node --test tests/sw.test.mjs   # service worker version, precache list, manifest, icon links
+node tests/smoke.cjs            # layout and behaviour
+node tests/e2e-pwa.cjs          # installability, control, update flow, offline reload
 ```
 
 Puppeteer smoke test across phone, iPad (portrait and landscape) and desktop sizes.

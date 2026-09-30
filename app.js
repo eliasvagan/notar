@@ -233,7 +233,8 @@
 			state.masterGain.gain.value = state.volume;
 			state.masterGain.connect(state.audioContext.destination);
 		}
-		if (state.audioContext.state === "suspended") {
+		// "interrupted" is iOS after the app was backgrounded; both resume on this (user-gesture) call.
+		if (state.audioContext.state !== "running") {
 			await state.audioContext.resume();
 		}
 		state.masterGain.gain.setValueAtTime(state.volume, state.audioContext.currentTime);
@@ -757,6 +758,7 @@
 	function stopPlayback() {
 		state.playbackToken += 1;
 		state.playing = false;
+		document.dispatchEvent(new CustomEvent("notar:playback", { detail: { playing: false } }));
 		ui.playBtn.disabled = false;
 		ui.stopBtn.disabled = true;
 		clearActiveNotes();
@@ -772,6 +774,7 @@
 		await ensureAudio();
 		stopPlayback();
 		state.playing = true;
+		document.dispatchEvent(new CustomEvent("notar:playback", { detail: { playing: true } }));
 		ui.playBtn.disabled = true;
 		ui.stopBtn.disabled = false;
 
@@ -1042,8 +1045,8 @@
 			: "Tap the keys, or type A–K (sharps W E T Y U, octave Z/X), to compose.");
 	}
 
-	// Test hook: pure helpers only, no state mutation.
-	window.Notar = { parsePitch, pitchId, pitchMidi, pitchFrequency, staffPlacement, normalizeNote, range: { low: "C2", high: "C6" } };
+	// Test hook: pure helpers only, no state mutation. isPlaying is read by pwa.js (no update while playing).
+	window.Notar = { isPlaying: () => state.playing, parsePitch, pitchId, pitchMidi, pitchFrequency, staffPlacement, normalizeNote, range: { low: "C2", high: "C6" } };
 
 	init();
 })();
