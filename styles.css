@@ -18,6 +18,11 @@
 	--gap-between: 1rem;
 	--radius: 10px;
 	--control-h: 2.75rem; /* 44px — minimum touch target */
+	/* Piano keys: white keys never shrink below --white-min; the row scrolls instead. */
+	--white-min: 2.5rem;
+	--white-h: 8rem;
+	--key-gap: 2px;
+	--octave-gap: 0.625rem;
 	color-scheme: light;
 }
 
@@ -88,10 +93,12 @@ a {
 	white-space: nowrap;
 }
 
+/* The page grows with the viewport (up to a wide desktop) so big screens
+ * get more staff and more octaves, not more empty margin. */
 .page {
-	max-width: 64rem;
+	max-width: 92rem;
 	margin: 0 auto;
-	padding: 2rem 1.25rem 3rem;
+	padding: 2rem clamp(1rem, 2.5vw, 2rem) 3rem;
 }
 
 .hero {
@@ -115,8 +122,8 @@ a {
 	border: 2px solid var(--border);
 	border-radius: 12px;
 	padding: 1.25rem;
-	margin-bottom: 1.25rem;
 	box-shadow: var(--shadow);
+	min-width: 0;
 }
 
 .panel h2 {
@@ -252,6 +259,7 @@ a {
 /* ── Focus: always visible, same ring on every control ──────────────────── */
 .btn:focus-visible,
 .key:focus-visible,
+.octave-tab:focus-visible,
 .segmented input:focus-visible + span,
 input[type="range"]:focus-visible,
 a:focus-visible {
@@ -259,7 +267,37 @@ a:focus-visible {
 	outline-offset: 2px;
 }
 
-/* ── Playback bar: transport tray | mix tray, on one baseline ───────────── */
+/* ── Workspace: one flex flow ──────────────────────────────────────────────
+ * Staff and keyboard take full rows; Playback, Edit and Import/Export are
+ * three sibling panels that share a row when there is room (similarity:
+ * same panel, same heading style; proximity: the gap between them is the
+ * same everywhere). */
+.workspace {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: stretch;
+	gap: 1.25rem;
+}
+
+.staff-panel,
+.compose-panel {
+	flex: 1 1 100%;
+}
+
+.playback-panel {
+	flex: 3 1 32rem;
+}
+
+.edit-panel,
+.file-panel {
+	flex: 1 1 12rem;
+}
+
+.deck h2 {
+	margin-bottom: 0.6rem;
+}
+
+/* ── Playback: transport tray | mix tray, on one baseline ───────────────── */
 .playback-bar {
 	display: flex;
 	flex-wrap: wrap;
@@ -272,7 +310,7 @@ a:focus-visible {
 }
 
 .mix {
-	flex: 1 1 22rem;
+	flex: 1 1 20rem;
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 0.5rem 1.5rem;
@@ -295,9 +333,10 @@ a:focus-visible {
 }
 
 .control label,
-.length-picker legend {
+.tool-label {
 	font-size: 0.9rem;
 	font-weight: 600;
+	color: var(--ink);
 }
 
 .control output {
@@ -314,7 +353,17 @@ input[type="range"] {
 	cursor: pointer;
 }
 
-/* ── Compose: heading and note length share the row above the keys ──────── */
+/* ── Edit / Import-Export: one tray each, buttons share it evenly ──────── */
+.actions {
+	width: 100%;
+}
+
+.actions .btn {
+	flex: 1 1 0;
+	padding: 0 0.85rem;
+}
+
+/* ── Compose head: heading left, three tools right, all on one baseline ─ */
 .panel-head {
 	display: flex;
 	flex-wrap: wrap;
@@ -328,10 +377,26 @@ input[type="range"] {
 	margin: 0;
 }
 
+.compose-tools {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.75rem 1.5rem;
+}
+
+.entry-tools {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.octave-nav,
 .length-picker {
 	display: flex;
 	align-items: center;
-	gap: 0.75rem;
+	gap: 0.6rem;
 	margin: 0;
 	padding: 0;
 	border: 0;
@@ -341,10 +406,15 @@ input[type="range"] {
 .length-picker legend {
 	float: left;
 	padding: 0;
-	color: var(--ink);
 }
 
-/* Segmented control: one tray, options inside it, the chosen one lifts out as a white chip. */
+.octave-tabs {
+	display: flex;
+	gap: var(--gap-in);
+}
+
+/* Segmented control: one tray, options inside it, the chosen one lifts out
+ * as a white chip. Octave tabs and note lengths look identical on purpose. */
 .segmented label {
 	position: relative;
 	display: flex;
@@ -358,95 +428,49 @@ input[type="range"] {
 	cursor: pointer;
 }
 
-.segmented label span {
+.segmented label span,
+.octave-tab {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	min-width: 3.25rem;
 	min-height: var(--control-h);
 	padding: 0 0.75rem;
-	border: 1.5px solid transparent;
-	border-radius: var(--radius);
+	font-family: inherit;
 	font-size: 0.95rem;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
 	color: var(--muted);
+	background: transparent;
+	border: 1.5px solid transparent;
+	border-radius: var(--radius);
 	cursor: pointer;
 	transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
-.segmented label:hover span {
+.segmented label:hover span,
+.octave-tab:hover {
 	color: var(--ink);
 }
 
-.segmented input:checked + span {
+.segmented input:checked + span,
+.octave-tab[aria-pressed="true"] {
 	color: var(--accent);
 	background: #fff;
 	border-color: var(--border-strong);
 	box-shadow: 0 1px 3px rgba(40, 40, 80, 0.12);
 }
 
-/* ── Piano: seven equal pitch keys + one visibly different rest key ─────── */
-.piano {
-	display: grid;
-	grid-template-columns: repeat(8, minmax(0, 1fr));
-	gap: 0.5rem;
+.octave-nav .btn.icon-only:disabled {
+	opacity: 0.3;
 }
 
-.piano button {
-	min-height: 4.5rem;
-	padding: 0.75rem 0.25rem;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	gap: 0.3rem;
-	font-family: inherit;
-	font-weight: 600;
-	color: var(--ink);
-	background: #fff;
-	border: 1.5px solid var(--border);
-	border-radius: var(--radius);
-	box-shadow: 0 2px 0 var(--border);
-	cursor: pointer;
-	transition: background-color 0.15s, border-color 0.15s, box-shadow 0.1s, transform 0.1s;
-}
-
-.piano button:hover {
-	border-color: var(--border-strong);
-	background: var(--accent-soft);
-}
-
-.piano button:active {
-	transform: translateY(2px);
-	box-shadow: 0 0 0 var(--border);
-}
-
-.piano button .pitch {
-	font-size: 1.4rem;
-	line-height: 1;
-	height: 1.4rem;
-	display: flex;
-	align-items: center;
-}
-
-.piano button .hint {
-	min-width: 1.4rem;
-	padding: 0.05rem 0.35rem;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-	font-size: 0.68rem;
-	font-weight: 500;
-	line-height: 1.4;
-	color: var(--muted);
-	background: var(--region);
-	border-radius: 4px;
-}
-
-/* Rest looks like the rest drawn on the staff — same symbol in both places. */
-.piano button.rest {
-	background: #f6f6f8;
+/* Rest: not a pitch, so it lives with note length, not on the keyboard.
+ * Dashed outline echoes the rest symbol on the staff. */
+.rest-btn {
 	border-style: dashed;
-	box-shadow: none;
+	background: #f6f6f8;
+	gap: 0.5rem;
 }
 
 .rest-glyph {
@@ -457,8 +481,227 @@ input[type="range"] {
 	stroke-width: 1.2;
 }
 
-/* ── Staff panel: meta on the left, edit + file trays on the right ──────── */
-.staff-panel {
+.rest-btn .hint {
+	font-weight: 500;
+	color: var(--muted);
+}
+
+/* ── Keyboard: one continuous row, never wraps ─────────────────────────────
+ * Each octave is its own tray (common region) with a label on top; octaves
+ * are spaced further apart than keys inside an octave (proximity). When the
+ * row is wider than the panel it scrolls, with fades at the clipped edges. */
+.keyboard-frame {
+	position: relative;
+}
+
+.keyboard-frame::before,
+.keyboard-frame::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0.75rem;
+	width: 2rem;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.2s;
+	z-index: 3;
+}
+
+/* A soft ink shadow rather than a white fade, so the edge still reads on
+ * white keys: "there is more keyboard this way". */
+.keyboard-frame::before {
+	left: 0;
+	background: linear-gradient(90deg, var(--panel) 0, rgba(250, 250, 250, 0.6) 0.35rem, rgba(59, 74, 122, 0.14) 0.4rem, rgba(59, 74, 122, 0));
+}
+
+.keyboard-frame::after {
+	right: 0;
+	background: linear-gradient(270deg, var(--panel) 0, rgba(250, 250, 250, 0.6) 0.35rem, rgba(59, 74, 122, 0.14) 0.4rem, rgba(59, 74, 122, 0));
+}
+
+.keyboard-frame.fade-start::before,
+.keyboard-frame.fade-end::after {
+	opacity: 1;
+}
+
+.piano {
+	display: flex;
+	flex-wrap: nowrap;
+	gap: var(--octave-gap);
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	scroll-snap-type: x proximity;
+	scrollbar-width: thin;
+	padding-bottom: 0.75rem;
+}
+
+.octave {
+	flex: 7 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	padding: 0.3rem 0.35rem 0.35rem;
+	background: var(--region);
+	border: 1px solid #d8dae8;
+	border-radius: calc(var(--radius) + var(--gap-in));
+	scroll-snap-align: center;
+	transition: background-color 0.15s, border-color 0.15s;
+}
+
+.octave[data-octave="6"] {
+	flex: 1 0 auto;
+}
+
+.octave-label {
+	padding: 0 0.3rem;
+	font-size: 0.78rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	font-variant-numeric: tabular-nums;
+	color: var(--muted);
+	line-height: 1.3;
+}
+
+/* The octave your computer keyboard plays: accent label and a firmer outline. */
+.octave.active {
+	background: var(--accent-soft);
+	border-color: var(--border-strong);
+}
+
+.octave.active .octave-label {
+	color: var(--accent);
+}
+
+.octave-keys {
+	--kw: calc((100% - (var(--whites) - 1) * var(--key-gap)) / var(--whites));
+	position: relative;
+	display: flex;
+	gap: var(--key-gap);
+	height: var(--white-h);
+}
+
+.key {
+	font-family: inherit;
+	font-weight: 600;
+	cursor: pointer;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 0.3rem;
+	padding: 0 0 0.55rem;
+	transition: background-color 0.12s, border-color 0.12s, box-shadow 0.1s, transform 0.08s;
+}
+
+.key.white {
+	flex: 1 0 var(--white-min);
+	min-width: var(--white-min);
+	color: var(--ink);
+	background: #fff;
+	border: 1.5px solid var(--border);
+	border-radius: 0 0 var(--radius) var(--radius);
+	box-shadow: 0 2px 0 var(--border);
+}
+
+.key.black {
+	position: absolute;
+	top: 0;
+	z-index: 2;
+	width: calc(var(--kw) * 0.64);
+	left: calc(var(--slot) * (var(--kw) + var(--key-gap)) - var(--key-gap) / 2 - var(--kw) * 0.32);
+	height: 58%;
+	color: #fff;
+	background: #2b2f45;
+	border: 1.5px solid #1d2033;
+	border-radius: 0 0 7px 7px;
+	box-shadow: 0 2px 0 #1d2033;
+	padding-bottom: 0.4rem;
+}
+
+.key .pitch {
+	font-size: 1.15rem;
+	line-height: 1;
+}
+
+.key.black .pitch {
+	font-size: 0.72rem;
+	letter-spacing: -0.02em;
+}
+
+.key .pitch sub {
+	font-size: 0.62em;
+	vertical-align: baseline;
+	position: relative;
+	top: 0.2em;
+	margin-left: 0.05em;
+	color: var(--muted);
+}
+
+.key.white:hover {
+	background: var(--accent-soft);
+	border-color: var(--border-strong);
+}
+
+.key.black:hover {
+	background: var(--accent);
+}
+
+.key:active,
+.key.struck {
+	transform: translateY(2px);
+	box-shadow: none;
+}
+
+.key.white.struck,
+.key.white.sounding {
+	background: #dfe6ff;
+	border-color: var(--accent);
+}
+
+.key.black.struck,
+.key.black.sounding {
+	background: var(--accent);
+}
+
+.key.sounding {
+	box-shadow: inset 0 -3px 0 #d4a017;
+}
+
+.hint {
+	min-width: 1.3rem;
+	padding: 0.05rem 0.3rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 0.66rem;
+	font-weight: 500;
+	line-height: 1.4;
+	text-align: center;
+	color: var(--muted);
+	background: var(--region);
+	border-radius: 4px;
+}
+
+/* Shortcut letters only on the octave the computer keyboard plays (plus the
+ * next C, reached with K), so the hints point at exactly one place. */
+.key .hint {
+	visibility: hidden;
+}
+
+.octave.active .key .hint,
+.octave.reach .key.white:first-child .hint {
+	visibility: visible;
+}
+
+.key.black .hint {
+	color: #d7daf0;
+	background: rgba(255, 255, 255, 0.14);
+	font-size: 0.6rem;
+	min-width: 0;
+	padding: 0 0.2rem;
+}
+
+/* ── Staff panel ───────────────────────────────────────────────────────── */
+.panel.staff-panel {
 	padding: 0;
 	overflow: hidden;
 }
@@ -468,16 +711,14 @@ input[type="range"] {
 	flex-wrap: wrap;
 	justify-content: space-between;
 	align-items: center;
-	gap: 0.75rem var(--gap-between);
-	padding: 0.75rem 1rem;
+	gap: 0.25rem var(--gap-between);
+	padding: 0.35rem 1rem;
 	border-bottom: 2px solid var(--border);
 	background: #fff;
 }
 
-.toolbar-groups {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--gap-between);
+.staff-toolbar h2 {
+	margin: 0;
 }
 
 .meta {
@@ -485,10 +726,6 @@ input[type="range"] {
 	color: var(--muted);
 	font-size: 0.92rem;
 	font-variant-numeric: tabular-nums;
-}
-
-.actions .btn {
-	padding: 0 0.85rem;
 }
 
 .staff-scroll {
@@ -501,7 +738,7 @@ input[type="range"] {
 #staffSvg {
 	display: block;
 	min-width: 100%;
-	height: 220px;
+	height: 290px;
 }
 
 .note-group {
@@ -514,23 +751,48 @@ input[type="range"] {
 	stroke-width: 1.2;
 }
 
+.note-head.open {
+	fill: var(--paper);
+	stroke: var(--accent);
+	stroke-width: 2.2;
+}
+
 .note-head.rest {
 	fill: #888;
 	stroke: #666;
 }
 
-.note-stem {
-	stroke: #2f3d66;
-	stroke-width: 1.6;
+.rest-dot {
+	fill: #888;
 }
 
-.note-label {
-	font-family: Georgia, "Times New Roman", serif;
-	font-size: 11px;
-	fill: #fff;
-	text-anchor: middle;
-	dominant-baseline: central;
-	pointer-events: none;
+.note-stem,
+.note-flag {
+	stroke: #2f3d66;
+	stroke-width: 1.6;
+	fill: none;
+}
+
+.note-flag {
+	stroke-width: 2;
+	stroke-linecap: round;
+}
+
+.accidental path {
+	fill: none;
+	stroke: #2f3d66;
+}
+
+.accidental .acc-thin {
+	stroke-width: 1.1;
+}
+
+.accidental .acc-thick {
+	stroke-width: 2.4;
+}
+
+.accidental .acc-bowl {
+	stroke-width: 1.6;
 }
 
 .note-group.active .note-head {
@@ -538,7 +800,13 @@ input[type="range"] {
 	stroke: #8a6500;
 }
 
-.note-group.active .note-stem {
+.note-group.active .note-head.open {
+	fill: #fbeecb;
+}
+
+.note-group.active .note-stem,
+.note-group.active .note-flag,
+.note-group.active .accidental path {
 	stroke: #8a6500;
 }
 
@@ -548,19 +816,37 @@ input[type="range"] {
 	opacity: 0.85;
 }
 
-.staff-line {
+.staff-line,
+.ledger-line {
 	stroke: #555;
 	stroke-width: 1;
 }
 
-.bar-line {
+.bar-line,
+.system-line {
 	stroke: #222;
 	stroke-width: 1.5;
 }
 
-.ledger-line {
-	stroke: #555;
-	stroke-width: 1;
+.bar-line.final {
+	stroke-width: 2.5;
+}
+
+.brace {
+	fill: none;
+	stroke: #222;
+	stroke-width: 2;
+}
+
+.bass-clef .clef-fill {
+	fill: #1a1a1a;
+}
+
+.bass-clef .clef-stroke {
+	fill: none;
+	stroke: #1a1a1a;
+	stroke-width: 2.6;
+	stroke-linecap: round;
 }
 
 .staff-footer {
@@ -606,36 +892,88 @@ kbd {
 	flex-wrap: wrap;
 }
 
-/* Keyboard hints are noise on a touchscreen — drop them there (Prägnanz). */
-@media (hover: none) and (pointer: coarse) {
-	.shortcuts,
-	.piano button .hint {
-		display: none;
-	}
-
-	.piano button {
-		min-height: 3.75rem;
+/* Medium widths: the tools drop under the heading and line up on its left
+ * edge (alignment) instead of hanging off the right. */
+@media (max-width: 1099px) {
+	.compose-tools {
+		flex: 1 1 100%;
+		justify-content: flex-start;
 	}
 }
 
-@media (max-width: 720px) {
+/* ── Touch screens: bigger keys, no keyboard hints (Prägnanz) ─────────── */
+@media (hover: none) and (pointer: coarse) {
+	:root {
+		--white-min: 2.9rem;
+		--white-h: 8.5rem;
+	}
+
+	.shortcuts,
+	.hint,
+	.rest-btn .hint {
+		display: none;
+	}
+
+	.key.white:hover {
+		background: #fff;
+		border-color: var(--border);
+	}
+
+	.key.black:hover {
+		background: #2b2f45;
+	}
+}
+
+/* ── Phones ─────────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+	:root {
+		--white-min: 2.75rem; /* 44px */
+		--white-h: 8rem;
+		--octave-gap: 0.5rem;
+		--key-gap: 1px;
+	}
+
+	/* Slimmer tray so neighbouring octaves peek in at both edges. */
+	.octave {
+		padding: 0.25rem 0.2rem 0.2rem;
+	}
+
 	.hero h1 {
 		font-size: 2rem;
 	}
 
-	.page {
-		padding-inline: 1rem;
+	.hero {
+		margin-bottom: 1.25rem;
+	}
+
+	.workspace {
+		gap: 1rem;
 	}
 
 	.panel {
 		padding: 1rem;
 	}
 
-	.piano {
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+	/* Play first on a phone: it is the one control you reach for most. */
+	.playback-panel {
+		order: -1;
 	}
 
-	/* Transport spans the width; Play takes the lion's share. */
+	/* The keyboard strip bleeds to the panel edges so a full octave fits. */
+	.keyboard-frame {
+		margin-inline: -1rem;
+	}
+
+	.piano {
+		padding-inline: 0.75rem;
+	}
+
+	.compose-tools {
+		flex: 1 1 100%;
+		justify-content: space-between;
+		gap: 0.6rem 1rem;
+	}
+
 	.transport {
 		flex: 1 1 100%;
 	}
@@ -653,23 +991,53 @@ kbd {
 		height: var(--control-h);
 	}
 
-	.length-picker {
+	.segmented label span,
+	.octave-tab {
+		min-width: 2.75rem;
+		padding: 0 0.45rem;
+	}
+}
+
+@media (max-width: 479px) {
+	/* Each tool gets its own full-width row; tabs share it evenly. */
+	.octave-nav,
+	.entry-tools {
 		flex: 1 1 100%;
+	}
+
+	.octave-nav .segmented,
+	.octave-tabs {
+		flex: 1 1 auto;
+	}
+
+	.octave-tab {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	.octave-nav .tool-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+	}
+
+	.length-picker {
+		flex: 1 1 auto;
 		justify-content: space-between;
 	}
 
-	.segmented label span {
-		min-width: 3rem;
-		padding: 0 0.5rem;
+	.rest-btn span {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
 	}
 
-	.toolbar-groups,
-	.toolbar-groups .region {
-		flex: 1 1 100%;
-	}
-
-	.toolbar-groups .btn {
-		flex: 1 1 0;
+	.rest-btn {
+		padding: 0 0.75rem;
 	}
 }
 
@@ -682,7 +1050,8 @@ kbd {
 	}
 
 	.btn:active,
-	.piano button:active {
+	.key:active,
+	.key.struck {
 		transform: none;
 	}
 }

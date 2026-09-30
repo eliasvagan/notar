@@ -5,7 +5,8 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Notar — melody composer</title>
 	<meta name="description" content="Compose and play melodies in the browser with a scrolling staff and Web Audio playback.">
-	<link rel="stylesheet" href="styles.css?v=3">
+	<link rel="icon" href="data:,">
+	<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 	<!--
@@ -20,6 +21,8 @@
 		<symbol id="i-trash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/></g></symbol>
 		<symbol id="i-import" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></g></symbol>
 		<symbol id="i-export" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></g></symbol>
+		<symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+		<symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 	</svg>
 
 	<div class="page">
@@ -27,101 +30,139 @@
 			<h1>Notar</h1>
 			<p>
 				A browser-based melody composer. Add notes on a scrolling staff, set tempo and note length,
-				then play your tune with precise Web Audio timing. Uses Nordic pitch names (H = B).
+				then play your tune with precise Web Audio timing. Four octaves, C2 to C6, on a grand staff.
+				Uses Nordic pitch names (H = B).
 			</p>
 		</header>
 
-		<!-- 1 · Listen: transport + the two settings that only affect playback -->
-		<section class="panel" aria-labelledby="playbackHeading">
-			<h2 id="playbackHeading">Playback</h2>
-			<div class="playback-bar">
-				<div class="region transport" role="group" aria-label="Transport">
-					<button id="playBtn" class="btn primary" type="button">
-						<svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span>Play</span>
-					</button>
-					<button id="stopBtn" class="btn secondary" type="button">
-						<svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg><span>Stop</span>
-					</button>
-					<button id="loopBtn" class="btn toggle icon-only" type="button" aria-pressed="false" aria-label="Loop playback" title="Loop playback">
-						<svg class="icon" aria-hidden="true"><use href="#i-loop"/></svg>
-					</button>
+		<!--
+			Workspace: one flex flow. The staff is always the widest, topmost thing on
+			large screens; the keyboard sits directly under it (what you press lands
+			right above your fingers); controls follow as three sibling sections.
+		-->
+		<main class="workspace">
+			<!-- Composition: what you have written, with its meta and status -->
+			<section class="panel staff-panel" aria-labelledby="staffHeading">
+				<div class="staff-toolbar">
+					<h2 id="staffHeading">Composition</h2>
+					<p id="noteCount" class="meta">0 notes</p>
 				</div>
+				<div id="staffScroll" class="staff-scroll">
+					<svg id="staffSvg" role="img" aria-label="Sheet music, grand staff"></svg>
+				</div>
+				<div class="staff-footer">
+					<p id="status" class="status" aria-live="polite"></p>
+					<p class="shortcuts">
+						<kbd>A</kbd>–<kbd>K</kbd> white keys · <kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> sharps · <kbd>Z</kbd>/<kbd>X</kbd> octave · <kbd>Space</kbd> rest · <kbd>Enter</kbd> play · <kbd>Esc</kbd> stop · <kbd>⌫</kbd> undo
+					</p>
+				</div>
+			</section>
 
-				<div class="region mix" role="group" aria-label="Tempo and volume">
-					<div class="control">
-						<div class="control-head">
-							<label for="bpm">Tempo</label>
-							<output id="bpmLabel" for="bpm">96 BPM</output>
+			<!-- Compose: octave switcher, note length and rest share the row above the keys -->
+			<section class="panel compose-panel" aria-labelledby="composeHeading">
+				<div class="panel-head">
+					<h2 id="composeHeading">Compose</h2>
+					<div class="compose-tools">
+						<div class="octave-nav" role="group" aria-label="Keyboard octave">
+							<span class="tool-label" id="octaveNavLabel">Octave</span>
+							<div class="region segmented">
+								<button id="octaveDownBtn" class="btn quiet icon-only" type="button" aria-label="Octave down (Z)" title="Octave down (Z)">
+									<svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg>
+								</button>
+								<div id="octaveTabs" class="octave-tabs"></div>
+								<button id="octaveUpBtn" class="btn quiet icon-only" type="button" aria-label="Octave up (X)" title="Octave up (X)">
+									<svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+								</button>
+							</div>
 						</div>
-						<input id="bpm" type="range" min="40" max="220" step="1" value="96">
-					</div>
-					<div class="control">
-						<div class="control-head">
-							<label for="volume">Volume</label>
-							<output id="volumeLabel" for="volume">35%</output>
+						<div class="entry-tools">
+						<fieldset class="length-picker">
+							<legend class="tool-label">Length</legend>
+							<div class="region segmented" id="durationPicker">
+								<label><input type="radio" name="durationPick" value="0"><span aria-label="Whole note">1/1</span></label>
+								<label><input type="radio" name="durationPick" value="1"><span aria-label="Half note">1/2</span></label>
+								<label><input type="radio" name="durationPick" value="2" checked><span aria-label="Quarter note">1/4</span></label>
+								<label><input type="radio" name="durationPick" value="3"><span aria-label="Eighth note">1/8</span></label>
+							</div>
+							<!-- The original slider stays the source of truth app.js reads; the radios drive it. -->
+							<div hidden>
+								<input id="duration" type="range" min="0" max="3" step="1" value="2" tabindex="-1">
+								<output id="durationLabel" for="duration">1/4</output>
+							</div>
+						</fieldset>
+						<button id="restBtn" class="btn rest-btn" type="button" data-pitch="rest" aria-label="Rest (Space)">
+							<svg class="rest-glyph" viewBox="0 0 24 12" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/></svg>
+							<span>Rest</span><kbd class="hint">space</kbd>
+						</button>
 						</div>
-						<input id="volume" type="range" min="0" max="1" step="0.01" value="0.35">
 					</div>
 				</div>
-			</div>
-		</section>
+				<div class="keyboard-frame" id="keyboardFrame">
+					<div id="piano" class="piano" role="group" aria-label="Piano keyboard, C2 to C6"></div>
+				</div>
+			</section>
 
-		<!-- 2 · Write: note length sits with the keys it applies to -->
-		<section class="panel" aria-labelledby="composeHeading">
-			<div class="panel-head">
-				<h2 id="composeHeading">Compose</h2>
-				<fieldset class="length-picker">
-					<legend>Note length</legend>
-					<div class="region segmented" id="durationPicker">
-						<label><input type="radio" name="durationPick" value="0"><span aria-label="Whole note">1/1</span></label>
-						<label><input type="radio" name="durationPick" value="1"><span aria-label="Half note">1/2</span></label>
-						<label><input type="radio" name="durationPick" value="2" checked><span aria-label="Quarter note">1/4</span></label>
-						<label><input type="radio" name="durationPick" value="3"><span aria-label="Eighth note">1/8</span></label>
-					</div>
-					<!-- The original slider stays the source of truth app.js reads; the radios drive it. -->
-					<div hidden>
-						<input id="duration" type="range" min="0" max="3" step="1" value="2" tabindex="-1">
-						<output id="durationLabel" for="duration">1/4</output>
-					</div>
-				</fieldset>
-			</div>
-			<div id="piano" class="piano" aria-label="Note input"></div>
-		</section>
-
-		<!-- 3 · Edit & keep: actions on the composition live with the composition -->
-		<section class="panel staff-panel" aria-label="Composition">
-			<div class="staff-toolbar">
-				<p id="noteCount" class="meta">0 notes</p>
-				<div class="toolbar-groups">
-					<div class="region segmented actions" role="group" aria-label="Edit">
-						<button id="undoBtn" class="btn quiet" type="button">
-							<svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg><span>Undo</span>
+			<!-- Playback: transport + the two settings that only affect playback -->
+			<section class="panel deck playback-panel" aria-labelledby="playbackHeading">
+				<h2 id="playbackHeading">Playback</h2>
+				<div class="playback-bar">
+					<div class="region transport" role="group" aria-label="Transport">
+						<button id="playBtn" class="btn primary" type="button">
+							<svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span>Play</span>
 						</button>
-						<button id="clearBtn" class="btn quiet danger" type="button">
-							<svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span>
+						<button id="stopBtn" class="btn secondary" type="button">
+							<svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg><span>Stop</span>
+						</button>
+						<button id="loopBtn" class="btn toggle icon-only" type="button" aria-pressed="false" aria-label="Loop playback" title="Loop playback">
+							<svg class="icon" aria-hidden="true"><use href="#i-loop"/></svg>
 						</button>
 					</div>
-					<div class="region segmented actions" role="group" aria-label="File">
-						<button id="importBtn" class="btn quiet" type="button">
-							<svg class="icon" aria-hidden="true"><use href="#i-import"/></svg><span>Import</span>
-						</button>
-						<button id="exportBtn" class="btn quiet" type="button">
-							<svg class="icon" aria-hidden="true"><use href="#i-export"/></svg><span>Export</span>
-						</button>
-						<input id="importInput" type="file" accept="application/json,.json" hidden>
+					<div class="region mix" role="group" aria-label="Tempo and volume">
+						<div class="control">
+							<div class="control-head">
+								<label for="bpm">Tempo</label>
+								<output id="bpmLabel" for="bpm">96 BPM</output>
+							</div>
+							<input id="bpm" type="range" min="40" max="220" step="1" value="96">
+						</div>
+						<div class="control">
+							<div class="control-head">
+								<label for="volume">Volume</label>
+								<output id="volumeLabel" for="volume">35%</output>
+							</div>
+							<input id="volume" type="range" min="0" max="1" step="0.01" value="0.35">
+						</div>
 					</div>
 				</div>
-			</div>
-			<div id="staffScroll" class="staff-scroll">
-				<svg id="staffSvg" role="img" aria-label="Sheet music staff"></svg>
-			</div>
-			<div class="staff-footer">
-				<p id="status" class="status" aria-live="polite"></p>
-				<p class="shortcuts">
-					<kbd>A</kbd>–<kbd>J</kbd> notes · <kbd>Space</kbd> rest · <kbd>Enter</kbd> play · <kbd>Esc</kbd> stop · <kbd>⌫</kbd> undo
-				</p>
-			</div>
-		</section>
+			</section>
+
+			<!-- Edit: actions that change the composition -->
+			<section class="panel deck edit-panel" aria-labelledby="editHeading">
+				<h2 id="editHeading">Edit</h2>
+				<div class="region segmented actions" role="group" aria-labelledby="editHeading">
+					<button id="undoBtn" class="btn quiet" type="button">
+						<svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg><span>Undo</span>
+					</button>
+					<button id="clearBtn" class="btn quiet danger" type="button">
+						<svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span>
+					</button>
+				</div>
+			</section>
+
+			<!-- Import / Export: moving the composition in and out -->
+			<section class="panel deck file-panel" aria-labelledby="fileHeading">
+				<h2 id="fileHeading">Import / Export</h2>
+				<div class="region segmented actions" role="group" aria-labelledby="fileHeading">
+					<button id="importBtn" class="btn quiet" type="button">
+						<svg class="icon" aria-hidden="true"><use href="#i-import"/></svg><span>Import</span>
+					</button>
+					<button id="exportBtn" class="btn quiet" type="button">
+						<svg class="icon" aria-hidden="true"><use href="#i-export"/></svg><span>Export</span>
+					</button>
+					<input id="importInput" type="file" accept="application/json,.json" hidden>
+				</div>
+			</section>
+		</main>
 
 		<footer class="page-footer">
 			<span>Originally by Elias B. Vågan, 2016 — rebuilt 2026</span>
@@ -129,6 +170,6 @@
 		</footer>
 	</div>
 
-	<script src="app.js?v=3"></script>
+	<script src="app.js?v=4"></script>
 </body>
 </html>
