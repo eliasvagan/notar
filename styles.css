@@ -1,12 +1,14 @@
 /*
  * All of Notar's styles, in one light theme. Design tokens sit on :root; base rules and the shared pieces (panels,
- * trays, buttons) come first, then each part of the page, then media queries that retune tokens and layout for
- * medium widths, touch screens, phones and reduced motion.
+ * trays, buttons, the menu) come first, then each part of the page, then media queries that retune tokens and
+ * layout for medium widths, touch screens, phones, reduced motion and print.
  *
  *   - app.js builds the keyboard and the staff, and shows state through classes (.octave.active and .reach,
  *     .key.struck, .sounding and .held, .held on a length chip and the Dot toggle, .keyboard-frame.fade-start and
- *     .fade-end, .note-group.active and .current, .playhead.shown, .ghost.remove, .status.error) and through
- *     custom properties: --whites on each octave's keys, --slot on each black key.
+ *     .fade-end, .note-group.active and .current, .selection-band, .playhead.shown, .ghost.remove, .status.error),
+ *     aria-disabled on Cut, Copy and Paste, and through custom properties: --whites on each octave's keys, --slot
+ *     on each black key. Exported images take their styles from here too: app.js reads each element's computed
+ *     style into the SVG file, so what is styled here is what an export looks like.
  *   - scripts/icons.mjs takes the icon colours from this file by regex: the --accent token, the .key.black and
  *     .key.white.sounding backgrounds and the .key.sounding box-shadow. Keep those as hex colours.
  *   - This file is part of the precached shell: after editing it, run node scripts/sw-version.mjs.
@@ -249,6 +251,18 @@ a {
 	border-color: var(--border);
 }
 
+/* aria-disabled (Cut, Copy, Paste with nothing to act on): looks like :disabled, but stays focusable and pressable,
+ * so a press can say what to do first. */
+.btn[aria-disabled="true"] {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.btn.quiet[aria-disabled="true"]:hover {
+	background: transparent;
+	border-color: transparent;
+}
+
 /* Primary — the focal point. Only Play gets a solid fill, extra width and weight. */
 .btn.primary {
 	min-height: 3.25rem;
@@ -313,6 +327,7 @@ a {
 .key:focus-visible,
 .octave-tab:focus-visible,
 .segmented input:focus-visible + span,
+.menu-item:focus-visible,
 input[type="range"]:focus-visible,
 a:focus-visible {
 	outline: 3px solid var(--focus);
@@ -340,8 +355,10 @@ a:focus-visible {
 	flex: 3 1 32rem;
 }
 
+/* Three labelled actions (Import, Export with its caret, Share): basis enough for them on one row, so where the
+ * row is too narrow the panel wraps onto its own instead of squeezing its buttons into each other. */
 .file-panel {
-	flex: 1 1 12rem;
+	flex: 1 1 22rem;
 }
 
 /* Four actions (Undo, Redo, Delete, Clear): basis enough for them on one row. */
@@ -363,6 +380,11 @@ a:focus-visible {
 
 .transport {
 	flex: none;
+}
+
+/* Sound takes a row of its own under the transport and the mix: the label, then the three sounds as chips. */
+.sound-picker {
+	flex: 1 1 100%;
 }
 
 /* minmax(0, 1fr): two equal columns, which may shrink below their content's width (plain 1fr may not). */
@@ -410,7 +432,7 @@ input[type="range"] {
 	cursor: pointer;
 }
 
-/* ── Edit / Import-Export: one tray each, buttons share it evenly ──────── */
+/* ── Edit / Import-Export: trays whose buttons share them evenly ───────── */
 .actions {
 	width: 100%;
 }
@@ -418,6 +440,92 @@ input[type="range"] {
 .actions .btn {
 	flex: 1 1 0;
 	padding: 0 0.85rem;
+}
+
+/* Edit's two trays, history and the clipboard, one above the other: the gap between them is wider than inside
+ * either (proximity), so they read as two groups of one kind (similarity). */
+.tray-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+/* ── The Export menu: a card under its tray ────────────────────────────────
+ * It opens below the Export button, right-aligned with the tray, over whatever follows; one item per format, its
+ * extension right-aligned in the muted monospace of the key hints. */
+.menu-anchor {
+	position: relative;
+}
+
+.menu {
+	position: absolute;
+	top: calc(100% + 0.4rem);
+	right: 0;
+	z-index: 10;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 15rem;
+	padding: var(--gap-in);
+	background: #fff;
+	border: 1.5px solid var(--border-strong);
+	border-radius: calc(var(--radius) + var(--gap-in));
+	box-shadow: 0 12px 30px rgba(40, 40, 80, 0.18);
+}
+
+.menu-item {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	min-height: var(--control-h);
+	padding: 0 0.85rem;
+	font-family: inherit;
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: var(--ink);
+	text-align: left;
+	background: transparent;
+	border: 0;
+	border-radius: var(--radius);
+	cursor: pointer;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+	background: var(--accent-soft);
+}
+
+.menu-item .icon {
+	width: 1.15rem;
+	height: 1.15rem;
+	flex: none;
+	color: var(--muted);
+}
+
+.menu-hint {
+	margin-left: auto;
+	padding-left: 1rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 0.78rem;
+	font-weight: 500;
+	color: var(--muted);
+}
+
+/* The caret turns over while the menu is open, and the button keeps its hover chip, so it reads as the menu's. */
+.menu-btn .caret {
+	width: 0.9rem;
+	height: 0.9rem;
+	margin-left: -0.2rem;
+	transition: transform 0.15s;
+}
+
+.menu-btn[aria-expanded="true"] {
+	background: #fff;
+	border-color: var(--border);
+}
+
+.menu-btn[aria-expanded="true"] .caret {
+	transform: rotate(180deg);
 }
 
 /* ── Compose head: heading left, three tools right, all on one baseline ─ */
@@ -450,9 +558,11 @@ input[type="range"] {
 	gap: 0.5rem;
 }
 
-/* .length-picker is a fieldset: no frame, and min-width: 0, since a fieldset won't shrink below its content. */
+/* .length-picker and .sound-picker are fieldsets: no frame, and min-width: 0, since a fieldset won't shrink below
+ * its content. */
 .octave-nav,
-.length-picker {
+.length-picker,
+.sound-picker {
 	display: flex;
 	align-items: center;
 	gap: 0.6rem;
@@ -463,7 +573,8 @@ input[type="range"] {
 }
 
 /* A floated legend is not drawn in the fieldset's border: it becomes an ordinary flex item beside the tray. */
-.length-picker legend {
+.length-picker legend,
+.sound-picker legend {
 	float: left;
 	padding: 0;
 }
@@ -852,12 +963,16 @@ input[type="range"] {
 	scrollbar-width: thin;
 }
 
-/* STAFF_HEIGHT in app.js. The hand pointer: every point of the staff does something when clicked (hitTest). */
+/* STAFF_HEIGHT in app.js. The hand pointer: every point of the staff does something when clicked (hitTest). No
+ * text selection or iOS callout: a long-press on the staff selects notes instead. */
 #staffSvg {
 	display: block;
 	min-width: 100%;
 	height: 284px;
 	cursor: pointer;
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	user-select: none;
 }
 
 /* ── Staff drawing (SVG from app.js) ───────────────────────────────────── */
@@ -908,6 +1023,19 @@ input[type="range"] {
 	stroke-width: 1;
 }
 
+/* The selection: one region over all its columns (common region), a firmer tint than the current note's band and
+ * edged in the accent, carried up through the ruler, so a run of notes reads as one block and never as one
+ * current note. With Shift held, the mouse previews it dashed (.ghost-selection), as the cursor is previewed. */
+.selection-band {
+	fill: rgba(59, 74, 122, 0.12);
+	stroke: var(--accent);
+	stroke-width: 1.5;
+}
+
+.selection-ruler {
+	fill: rgba(59, 74, 122, 0.22);
+}
+
 /* Hover preview: the same head as a real note, faint (it is not written yet). Removing shows red, like Clear. */
 .ghost {
 	pointer-events: none;
@@ -956,6 +1084,13 @@ input[type="range"] {
 	opacity: 0.6;
 }
 
+.ghost-selection {
+	fill: rgba(59, 74, 122, 0.05);
+	stroke: var(--accent);
+	stroke-width: 1.5;
+	stroke-dasharray: 5 4;
+}
+
 .chord-symbol {
 	font-size: 13px;
 	font-weight: 600;
@@ -968,6 +1103,26 @@ input[type="range"] {
 	font-weight: 700;
 	text-anchor: middle;
 	fill: #1a1a1a;
+}
+
+/* Sheets for print and image export: white paper, and the tempo over the first system's clefs. */
+.sheet-paper {
+	fill: #fff;
+}
+
+.tempo-note {
+	fill: var(--ink);
+}
+
+.tempo-stem {
+	stroke: var(--ink);
+	stroke-width: 1.3;
+}
+
+.tempo-text {
+	font-size: 14px;
+	font-weight: 700;
+	fill: var(--ink);
 }
 
 .note-head {
@@ -1118,6 +1273,26 @@ input[type="range"] {
 	min-height: 1.3rem;
 }
 
+/* The Bring back bar: a piece a share link replaced, offered back after a reload. A tray in the accent's soft tint
+ * on a row of its own above the status line, so it reads as a notice about the composition, not a control set. */
+.restore-bar {
+	flex: 1 1 100%;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--gap-in) 0.5rem;
+	padding: var(--gap-in) var(--gap-in) var(--gap-in) 0.75rem;
+	font-size: 0.88rem;
+	color: var(--ink);
+	background: var(--accent-soft);
+	border: 1px solid var(--border);
+	border-radius: calc(var(--radius) + var(--gap-in));
+}
+
+.restore-bar span:first-child {
+	flex: 1 1 14rem;
+}
+
 .status.error {
 	color: var(--danger);
 }
@@ -1168,6 +1343,7 @@ kbd {
 
 	.shortcuts,
 	.hint,
+	.key-hint,
 	.rest-btn .hint {
 		display: none;
 	}
@@ -1340,6 +1516,63 @@ kbd {
 	.chord-btn {
 		flex: 1 1 0;
 		padding: 0 0.75rem;
+	}
+
+	/* The three sounds share the row evenly, as the lengths do. */
+	.sound-picker .segmented {
+		flex: 1 1 auto;
+	}
+
+	.sound-picker .segmented label {
+		flex: 1 1 0;
+	}
+
+	.sound-picker .segmented label span {
+		width: 100%;
+		min-width: 0;
+	}
+}
+
+/* ── Print: the sheet alone ─────────────────────────────────────────────────
+ * Printing (and Save as PDF) shows only #printSheet, which app.js fills on beforeprint with the music broken into
+ * systems of whole measures; every control is hidden. Each system is its own SVG, scaled to the page width, and is
+ * never split across a page break. */
+.print-sheet {
+	display: none;
+}
+
+@page {
+	margin: 14mm 12mm;
+}
+
+@media print {
+	html,
+	body {
+		background: #fff;
+	}
+
+	body {
+		padding: 0;
+		min-height: 0;
+	}
+
+	.page {
+		display: none;
+	}
+
+	.print-sheet {
+		display: block;
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+
+	.print-system {
+		display: block;
+		width: 100%;
+		height: auto;
+		margin: 0 0 5mm;
+		break-inside: avoid;
+		page-break-inside: avoid;
 	}
 }
 

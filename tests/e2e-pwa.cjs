@@ -6,7 +6,8 @@
  *
  * Serves this directory at /projects/notar/ (as on eliasv.com) and checks: Chrome reports no installability or
  * manifest errors; the service worker controls the page; a new version waits, shows the quiet hint only when
- * not playing, and applies from it (old cache deleted); and an offline reload still composes and plays.
+ * not playing, and applies from it (old cache deleted); an offline reload still composes and plays; and a share
+ * link opened while an update waits isn't reloaded away (its Undo still brings back the draft).
  * BASE=https://eliasv.com/projects/notar/ runs the installability, control and offline checks against a live site.
  * HOST_RULES is passed to Chrome as --host-resolver-rules, e.g. to send BASE's host name to another server.
  */
@@ -173,6 +174,36 @@ async function main() {
 			assert.ok(clef, "clef not cached");
 			await page.setOfflineMode(false);
 		});
+
+		if (!live) {
+			await check("a share link opened while an update waits isn't reloaded away: Undo still brings back the draft", async () => {
+				// A draft of three notes; then a new version is deployed and waits.
+				await page.evaluate(() => {
+					localStorage.setItem("notar-composition-v1", JSON.stringify({ notes: ["C4", "D4", "E4"].map((p) => ({ pitches: [p], duration: 4 })), caret: 3 }));
+				});
+				swOverride = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").replace(/const VERSION = '[0-9a-f]*';/, "const VERSION = 'e2e111111111';");
+				await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+				await page.waitForFunction(async () => !!(await navigator.serviceWorker.getRegistration()).waiting, { timeout: 15000 });
+				// The link (one whole-note A4 at 120 BPM, raw) is opened as a fresh launch, nothing pressed.
+				const link = `${base}#n=R${Buffer.from([1, 120, 1, 0x10, 0x51]).toString("base64url")}`;
+				await page.goto("about:blank");
+				let loads = 0;
+				const count = () => {
+					loads += 1;
+				};
+				page.on("load", count);
+				await page.goto(link, { waitUntil: "load" });
+				await page.waitForFunction(() => /Opened a shared link/.test(document.getElementById("status").textContent), { timeout: 5000 });
+				await new Promise((r) => setTimeout(r, 2000)); // time for pwa.js to have applied the update, had it meant to
+				page.off("load", count);
+				assert.strictEqual(loads, 1, "no second load: the update waits");
+				assert.strictEqual(await page.$eval("#undoBtn", (b) => b.disabled), false);
+				await page.click("#undoBtn");
+				const notes = await page.evaluate(() => JSON.parse(localStorage.getItem("notar-composition-v1")).notes.map((n) => n.pitches.join("+")));
+				assert.deepStrictEqual(notes, ["C4", "D4", "E4"]);
+				assert.ok(!(await page.$eval("#updateBtn", (b) => b.hidden)), "the update is offered instead");
+			});
+		}
 
 		await check("no page errors", () => assert.deepStrictEqual(errors, []));
 	} finally {

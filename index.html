@@ -16,7 +16,7 @@
 	<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
 	<link rel="icon" href="favicon.svg" type="image/svg+xml">
 	<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" sizes="180x180">
-	<link rel="stylesheet" href="styles.css?v=6">
+	<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 	<!--
@@ -39,6 +39,16 @@
 		<symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 		<symbol id="i-update" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"/><path d="m7.5 9.5 4.5 4.5 4.5-4.5"/><path d="M5 20h14"/></g></symbol>
 		<symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+		<symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+		<symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.5a4.5 4.5 0 0 0 6.4.4l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.7 1.7"/><path d="M14 10.5a4.5 4.5 0 0 0-6.4-.4l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.7-1.7"/></g></symbol>
+		<symbol id="i-cut" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9"/><path d="M14.5 14.5 20 20"/><path d="M8.1 8.1 12 12"/></g></symbol>
+		<symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g></symbol>
+		<symbol id="i-paste" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></g></symbol>
+		<symbol id="i-metronome" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l4 18H5Z"/><path d="M6.4 15.5h11.2"/><path d="m12 15.5 5-9"/></g></symbol>
+		<symbol id="i-file" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/></g></symbol>
+		<symbol id="i-music" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></g></symbol>
+		<symbol id="i-image" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></g></symbol>
+		<symbol id="i-print" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></g></symbol>
 	</svg>
 
 	<div class="page">
@@ -53,7 +63,8 @@
 			<p>
 				A browser-based composer for melodies and chords. Play the keys or click the staff: notes go in
 				at the cursor, and you hear each one as you write it. Then play it back with precise Web Audio
-				timing. Four octaves, C2 to C6, on a grand staff. Uses Nordic pitch names (H = B).
+				timing, share it as a link, or take it out as MIDI, an image or a printout. Four octaves, C2 to C6, on a
+				grand staff. Uses Nordic pitch names (H = B).
 			</p>
 		</header>
 
@@ -73,9 +84,18 @@
 					<svg id="staffSvg" role="img" aria-label="Sheet music, grand staff"></svg>
 				</div>
 				<div class="staff-footer">
+					<!-- Shown after a reload when a share link has replaced a piece that Undo can no longer reach: the piece
+					     is kept in localStorage until it is brought back or forgotten. -->
+					<div id="restoreBar" class="restore-bar" role="group" aria-labelledby="restoreText" hidden>
+						<span id="restoreText"></span>
+						<button id="restoreBtn" class="btn quiet" type="button">
+							<svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg><span>Bring it back</span>
+						</button>
+						<button id="forgetBtn" class="btn quiet" type="button" title="Forget the previous piece for good">Forget</button>
+					</div>
 					<p id="status" class="status" aria-live="polite"></p>
 					<p class="shortcuts">
-						<kbd>A</kbd>–<kbd>K</kbd> white keys · <kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> sharps · <kbd>⇧</kbd> chord · <kbd>Z</kbd>/<kbd>X</kbd> octave · <kbd>1</kbd>–<kbd>5</kbd> length · <kbd>.</kbd> dot · <kbd>⇧1</kbd>–<kbd>5</kbd> <kbd>⇧.</kbd> the note's length · <kbd>Space</kbd> rest · <kbd>←</kbd><kbd>→</kbd> cursor · <kbd>↑</kbd><kbd>↓</kbd> transpose · <kbd>⌫</kbd> delete · <kbd>⌘Z</kbd> undo · <kbd>Enter</kbd> play · <kbd>Esc</kbd> stop
+						<kbd>A</kbd>–<kbd>K</kbd> white keys · <kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> sharps · <kbd>⇧</kbd> chord · <kbd>Z</kbd>/<kbd>X</kbd> octave · <kbd>1</kbd>–<kbd>5</kbd> length · <kbd>.</kbd> dot · <kbd>⇧1</kbd>–<kbd>5</kbd> <kbd>⇧.</kbd> the note's length · <kbd>Space</kbd> rest · <kbd>←</kbd><kbd>→</kbd> cursor · <kbd>⇧←</kbd><kbd>⇧→</kbd> select · <kbd>↑</kbd><kbd>↓</kbd> transpose · <kbd>⌫</kbd> delete · <kbd>⌘C</kbd><kbd>⌘X</kbd><kbd>⌘V</kbd> copy, cut, paste · <kbd>⌘Z</kbd> undo · <kbd>Enter</kbd> play · <kbd>Esc</kbd> stop, deselect
 					</p>
 				</div>
 			</section>
@@ -152,6 +172,9 @@
 						<button id="loopBtn" class="btn toggle icon-only" type="button" aria-pressed="false" aria-label="Loop playback" title="Loop playback">
 							<svg class="icon" aria-hidden="true"><use href="#i-loop"/></svg>
 						</button>
+						<button id="metronomeBtn" class="btn toggle icon-only" type="button" aria-pressed="false" aria-label="Metronome" title="Metronome: a click on every beat while playing">
+							<svg class="icon" aria-hidden="true"><use href="#i-metronome"/></svg>
+						</button>
 					</div>
 					<div class="region mix" role="group" aria-label="Tempo and volume">
 						<div class="control">
@@ -169,39 +192,87 @@
 							<input id="volume" type="range" min="0" max="1" step="0.01" value="0.35">
 						</div>
 					</div>
+					<!-- Sound: the same label-and-tray as the length picker, since it is the same kind of choice. -->
+					<fieldset class="sound-picker">
+						<legend class="tool-label">Sound</legend>
+						<div class="region segmented" id="instrumentPicker">
+							<label><input type="radio" name="instrument" value="piano" checked><span>Piano</span></label>
+							<label><input type="radio" name="instrument" value="epiano"><span aria-label="Electric piano">E-piano</span></label>
+							<label><input type="radio" name="instrument" value="tone"><span aria-label="Soft tone">Tone</span></label>
+						</div>
+					</fieldset>
 				</div>
 			</section>
 
-			<!-- Edit: actions that change the composition -->
+			<!-- Edit: actions that change the composition. History and deleting in one tray; the clipboard, which acts on a
+			     selection, in a second one under it. Cut and Copy are aria-disabled, not disabled, without a selection:
+			     pressed, they say how to select (on a touch screen, which has no tooltips, that is how it is found). -->
 			<section class="panel deck edit-panel" aria-labelledby="editHeading">
 				<h2 id="editHeading">Edit</h2>
-				<div class="region segmented actions" role="group" aria-labelledby="editHeading">
-					<button id="undoBtn" class="btn quiet" type="button" title="Undo (⌘Z or Ctrl+Z)">
-						<svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg><span>Undo</span>
-					</button>
-					<button id="redoBtn" class="btn quiet" type="button" title="Redo (⇧⌘Z or Ctrl+Y)">
-						<svg class="icon" aria-hidden="true"><use href="#i-redo"/></svg><span>Redo</span>
-					</button>
-					<button id="deleteBtn" class="btn quiet" type="button" title="Delete the highlighted note (⌫)">
-						<svg class="icon" aria-hidden="true"><use href="#i-delete"/></svg><span>Delete</span>
-					</button>
-					<button id="clearBtn" class="btn quiet danger" type="button" title="Clear the whole composition (undoable)">
-						<svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span>
-					</button>
+				<div class="tray-stack">
+					<div class="region segmented actions" role="group" aria-labelledby="editHeading">
+						<button id="undoBtn" class="btn quiet" type="button" title="Undo (⌘Z or Ctrl+Z)">
+							<svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg><span>Undo</span>
+						</button>
+						<button id="redoBtn" class="btn quiet" type="button" title="Redo (⇧⌘Z or Ctrl+Y)">
+							<svg class="icon" aria-hidden="true"><use href="#i-redo"/></svg><span>Redo</span>
+						</button>
+						<button id="deleteBtn" class="btn quiet" type="button" title="Delete the highlighted note (⌫)">
+							<svg class="icon" aria-hidden="true"><use href="#i-delete"/></svg><span>Delete</span>
+						</button>
+						<button id="clearBtn" class="btn quiet danger" type="button" title="Clear the whole composition (undoable)">
+							<svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span>
+						</button>
+					</div>
+					<div class="region segmented actions" role="group" aria-label="Clipboard">
+						<button id="cutBtn" class="btn quiet" type="button" aria-disabled="true" title="Cut the selected notes (⌘X or Ctrl+X)">
+							<svg class="icon" aria-hidden="true"><use href="#i-cut"/></svg><span>Cut</span>
+						</button>
+						<button id="copyBtn" class="btn quiet" type="button" aria-disabled="true" title="Copy the selected notes (⌘C or Ctrl+C), to paste here or in another tab">
+							<svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span>
+						</button>
+						<button id="pasteBtn" class="btn quiet" type="button" aria-disabled="true" title="Paste copied notes at the cursor, or over the selection (⌘V or Ctrl+V)">
+							<svg class="icon" aria-hidden="true"><use href="#i-paste"/></svg><span>Paste</span>
+						</button>
+					</div>
 				</div>
 			</section>
 
-			<!-- Import / Export: moving the composition in and out -->
+			<!-- Import / Export: moving the composition in and out. One tray of three: Import, Export (a menu of every
+			     format, so they don't crowd the page) and Share (a link). The menu is a disclosure: a button that shows
+			     and hides a group of buttons under the tray. -->
 			<section class="panel deck file-panel" aria-labelledby="fileHeading">
 				<h2 id="fileHeading">Import / Export</h2>
-				<div class="region segmented actions" role="group" aria-labelledby="fileHeading">
-					<button id="importBtn" class="btn quiet" type="button">
-						<svg class="icon" aria-hidden="true"><use href="#i-import"/></svg><span>Import</span>
-					</button>
-					<button id="exportBtn" class="btn quiet" type="button">
-						<svg class="icon" aria-hidden="true"><use href="#i-export"/></svg><span>Export</span>
-					</button>
-					<input id="importInput" type="file" accept="application/json,.json" hidden>
+				<div class="menu-anchor">
+					<div class="region segmented actions" role="group" aria-labelledby="fileHeading">
+						<button id="importBtn" class="btn quiet" type="button" title="Open a Notar file (.json)">
+							<svg class="icon" aria-hidden="true"><use href="#i-import"/></svg><span>Import</span>
+						</button>
+						<button id="exportMenuBtn" class="btn quiet menu-btn" type="button" aria-expanded="false" aria-controls="exportMenu" title="Save the composition as a file, an image or a printout">
+							<svg class="icon" aria-hidden="true"><use href="#i-export"/></svg><span>Export</span><svg class="icon caret" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+						</button>
+						<button id="shareBtn" class="btn quiet" type="button" title="Copy a link that opens this composition (on a phone or tablet, share it)">
+							<svg class="icon" aria-hidden="true"><use href="#i-share"/></svg><span>Share</span>
+						</button>
+						<input id="importInput" type="file" accept="application/json,.json" hidden>
+					</div>
+					<div id="exportMenu" class="menu" role="group" aria-label="Export formats" hidden>
+						<button id="exportBtn" class="menu-item" type="button">
+							<svg class="icon" aria-hidden="true"><use href="#i-file"/></svg><span>Notar file</span><span class="menu-hint">.json</span>
+						</button>
+						<button id="midiBtn" class="menu-item" type="button">
+							<svg class="icon" aria-hidden="true"><use href="#i-music"/></svg><span>MIDI</span><span class="menu-hint">.mid</span>
+						</button>
+						<button id="svgBtn" class="menu-item" type="button">
+							<svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><span>Image</span><span class="menu-hint">.svg</span>
+						</button>
+						<button id="pngBtn" class="menu-item" type="button">
+							<svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><span>Image, 2×</span><span class="menu-hint">.png</span>
+						</button>
+						<button id="printBtn" class="menu-item" type="button">
+							<svg class="icon" aria-hidden="true"><use href="#i-print"/></svg><span>Print or PDF…</span><span class="menu-hint key-hint">⌘P</span>
+						</button>
+					</div>
 				</div>
 			</section>
 		</main>
@@ -212,7 +283,11 @@
 		</footer>
 	</div>
 
-	<script src="app.js?v=6"></script>
+	<!-- The printout: app.js fills it on beforeprint with the music broken into systems, and empties it afterwards.
+	     Hidden on screen; when printing, the only thing shown (styles.css, @media print). -->
+	<div id="printSheet" class="print-sheet"></div>
+
+	<script src="app.js?v=7"></script>
 	<script src="pwa.js"></script>
 </body>
 </html>

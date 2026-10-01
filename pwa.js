@@ -1,10 +1,12 @@
 /*
  * The installable app: registers the service worker (sw.js) and applies updates without breaking a session.
  * A new version downloads in the background and waits. It is applied (one reload into the new version) only:
- *   - at launch, before anything has been pressed or played; or
+ *   - at launch, before anything has been pressed, played or edited (a share link opening at launch is an edit:
+ *     the reload would take the Undo that brings back the piece it replaced); or
  *   - when the quiet "update ready" hint in the header is tapped. The hint never shows while playing.
- * The composition and settings are saved on every change, so that reload loses nothing. Playback and editing
- * are never interrupted; worst case the update waits for the next launch.
+ * The composition and settings are saved on every change, so that reload loses nothing but the undo history (a
+ * piece a share link replaced is kept apart, so even that is never lost). Playback and editing are never
+ * interrupted; worst case the update waits for the next launch.
  */
 (function () {
 	"use strict";
@@ -18,6 +20,7 @@
 	let touched = false; // anything pressed, typed or played since launch
 
 	const playing = () => !!(window.Notar && window.Notar.isPlaying && window.Notar.isPlaying());
+	const edited = () => !!(window.Notar && window.Notar.editedSinceLaunch && window.Notar.editedSinceLaunch());
 	const waiting = () => (registration && registration.waiting && sw.controller ? registration.waiting : null);
 
 	function refresh() {
@@ -63,7 +66,7 @@
 		});
 		watch(registration.installing);
 		registration.addEventListener("updatefound", () => watch(registration.installing));
-		if (waiting() && !touched && !playing()) {
+		if (waiting() && !touched && !playing() && !edited()) {
 			apply();
 		} else {
 			refresh();
