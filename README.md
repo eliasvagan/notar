@@ -42,6 +42,9 @@ python3 -m http.server 8000
 
 Then open `http://localhost:8000`.
 
+Every commit raises the `version` in `package.json` (`npm version patch --no-git-tag-version`).
+`.githooks/pre-commit` enforces it once a clone has run `git config core.hooksPath .githooks`.
+
 ## Tests
 
 ```bash
