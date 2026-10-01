@@ -26,6 +26,8 @@
 		}
 	}
 
+	// Tells the waiting worker to activate now (sw.js calls skipWaiting); the controllerchange handler below then
+	// reloads into the new version.
 	function apply() {
 		const worker = waiting();
 		if (!worker || playing()) {

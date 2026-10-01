@@ -13,11 +13,16 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const SW = resolve(ROOT, 'sw.js');
 const STAMP = /const VERSION = '([0-9a-f]*)';/;
 
+/** The files in sw.js's SHELL list, as paths from the repo root ('./' is index.html). */
 export function shellFiles(source = readFileSync(SW, 'utf8')) {
   const list = source.match(/const SHELL = \[([\s\S]*?)\];/)[1];
   return [...list.matchAll(/'([^']*)'/g)].map((m) => (m[1] === './' ? 'index.html' : m[1]));
 }
 
+/**
+ * The first 12 hex digits of a SHA-256 over sw.js with its stamp emptied (so stamping doesn't change the hash),
+ * then each shell file's name and bytes. The NULs around each name keep file boundaries unambiguous.
+ */
 export function computeVersion(source = readFileSync(SW, 'utf8')) {
   const hash = createHash('sha256');
   hash.update(source.replace(STAMP, "const VERSION = '';"));
@@ -27,6 +32,7 @@ export function computeVersion(source = readFileSync(SW, 'utf8')) {
 
 export const stampedVersion = (source = readFileSync(SW, 'utf8')) => source.match(STAMP)[1];
 
+// Only when run as a script; tests/sw.test.mjs imports the functions above.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const source = readFileSync(SW, 'utf8');
   const version = computeVersion(source);

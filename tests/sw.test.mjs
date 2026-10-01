@@ -1,4 +1,6 @@
 // Unit tests for the installable app: node --test tests/sw.test.mjs
+// Static checks, no browser: sw.js's VERSION stamp, the precache list against what index.html and app.js load,
+// the manifest, the icon links and favicon.ico.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -15,6 +17,7 @@ test('the service worker version matches the shell it precaches', () => {
 
 test('a change to any shell file changes the version', () => {
   const sw = read('sw.js');
+  // An in-memory edit: one more SHELL entry (favicon.svg a second time), which the hash must notice.
   const edited = sw.replace("'./',", "'./', 'favicon.svg',");
   assert.notEqual(computeVersion(edited), computeVersion(sw));
 });
@@ -23,6 +26,7 @@ test('every precached file exists, and everything the page loads is precached', 
   const files = shellFiles();
   for (const f of files) assert.ok(existsSync(resolve(ROOT, f)), f);
   const html = read('index.html');
+  // Relative href and src values, ?v= queries dropped; '#' (<use href="#i-…">) and ':' (absolute URLs) never match.
   for (const [, ref] of html.matchAll(/(?:href|src)="([^"#:]+?)(?:\?[^"]*)?"/g)) {
     if (ref.startsWith('/')) continue; // outside the app (the portfolio)
     assert.ok(files.includes(ref), `index.html uses ${ref}`);
@@ -63,6 +67,7 @@ test('the page links the icons, the manifest and a matching theme colour', () =>
 
 test('favicon.ico holds 16, 32 and 48 px images', () => {
   const ico = readFileSync(resolve(ROOT, 'favicon.ico'));
+  // ICONDIR: type 1 (icon) at byte 2, the image count at 4; each 16-byte entry from byte 6 starts with its width.
   assert.equal(ico.readUInt16LE(2), 1);
   const n = ico.readUInt16LE(4);
   const sizes = Array.from({ length: n }, (_, i) => ico.readUInt8(6 + 16 * i));

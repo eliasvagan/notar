@@ -1,3 +1,16 @@
+/*
+ * Notar itself: the pitch model, the on-screen keyboard, the grand staff (drawn as SVG), Web Audio playback,
+ * persistence and import/export, in one IIFE with no dependencies. index.html loads it before pwa.js and supplies
+ * every element in `ui` below.
+ *
+ *   - A composition is state.notes: [{ pitch, duration }]. pitch is "rest" or a pitch id like "C4", "F#3", "Eb5"
+ *     (C2–C6); duration is the note value's denominator (1 whole, 2 half, 4 quarter, 8 eighth).
+ *   - The staff is redrawn in full whenever state.notes changes; playback finds note i by its data-index="i".
+ *   - Every change is saved to localStorage at once, so a reload (pwa.js applying an update) loses nothing.
+ *   - pwa.js and the tests read window.Notar (end of file); "notar:playback" events on document tell pwa.js
+ *     when playback starts and stops.
+ *   - This file is part of the precached shell: after editing it, run node scripts/sw-version.mjs.
+ */
 (function () {
 	"use strict";
 
@@ -7,13 +20,17 @@
 	// Scientific octave numbering: C4 is middle C, A4 = 440 Hz.
 	const STEPS = ["C", "D", "E", "F", "G", "A", "H"];
 	const STEP_SEMITONES = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, H: 11 };
+	// The octaves with a full group of keys and a tab; the range closes on one more key, C6.
 	const OCTAVES = [2, 3, 4, 5];
 	const LOWEST_MIDI = 36; // C2
 	const HIGHEST_MIDI = 84; // C6
+	// The computer keyboard's octave on a first visit, and the octave of a version-1 pitch, which has none.
 	const DEFAULT_OCTAVE = 4;
 	// Black keys sit after these white-key indices (C, D, F, G, A).
 	const BLACK_AFTER = [0, 1, 3, 4, 5];
 
+	// Note lengths, each the denominator of a whole note (4 = quarter). A length's index in this list is the value
+	// of the hidden #duration slider and of its radio in #durationPicker.
 	const DURATIONS = [
 		{ label: "1/1", value: 1 },
 		{ label: "1/2", value: 2 },
@@ -23,8 +40,11 @@
 	const VALID_DURATIONS = DURATIONS.map((entry) => entry.value);
 
 	// ── Staff geometry (grand staff) ─────────────────────────────────────────
-	const MEASURE_WIDTH = 240;
-	const STAFF_LEFT = 84;
+	// SVG user units; drawStaff sizes the SVG to its viewBox, so one unit is one CSS px. Notes are spaced by
+	// length (noteWidth), so x is proportional to the beat. Each staff places its notes from its own bottom line
+	// (staffPlacement): the gap between the two staves is layout, not pitch.
+	const MEASURE_WIDTH = 240; // one 4/4 measure: 60 per beat
+	const STAFF_LEFT = 84; // x of the first bar line; brace and clefs sit to its left
 	const LINE_GAP = 6; // half a staff space: one diatonic step
 	const SPACE = LINE_GAP * 2;
 	const TREBLE_TOP = 54; // F5 line
@@ -32,10 +52,13 @@
 	const BASS_TOP = TREBLE_BOTTOM + 66; // A3 line
 	const BASS_BOTTOM = BASS_TOP + SPACE * 4; // G2 line
 	const STAFF_HEIGHT = BASS_BOTTOM + 60;
-	const BEATS_PER_MEASURE = 4;
+	const BEATS_PER_MEASURE = 4; // 4/4 throughout, a beat is a quarter note; no time signature is drawn
 
+	// ── Computer-keyboard shortcuts ──────────────────────────────────────────
 	// Computer keyboard: one piano octave laid out like a DAW (home row = white
 	// keys, row above = sharps). K reaches the C of the next octave.
+	// step indexes STEPS, alter 1 is a sharp, shift is octaves above state.octave. Keys are matched on event.key,
+	// the character typed, so on other layouts (AZERTY, QWERTZ) the letters count, not the key positions.
 	const KEY_MAP = {
 		a: { step: 0, alter: 0, shift: 0 },
 		w: { step: 0, alter: 1, shift: 0 },
@@ -51,11 +74,16 @@
 		j: { step: 6, alter: 0, shift: 0 },
 		k: { step: 0, alter: 0, shift: 1 },
 	};
+	// The letter printed on each key: white keys by step, sharps by the step they raise.
 	const WHITE_HINTS = ["A", "S", "D", "F", "G", "H", "J"];
 	const BLACK_HINTS = { 0: "W", 1: "E", 3: "T", 4: "Y", 5: "U" };
 
+	// ── State and DOM ────────────────────────────────────────────────────────
+	// localStorage key of the saved draft (saveToStorage). Version-1 drafts, whose pitches have no octave, still
+	// load: parsePitch reads them as octave 4.
 	const STORAGE_KEY = "notar-composition-v1";
 
+	// Elements from index.html. Every one is required except #durationPicker, which is checked before use.
 	const ui = {
 		volume: document.getElementById("volume"),
 		volumeLabel: document.getElementById("volumeLabel"),
@@ -84,10 +112,15 @@
 		durationPicker: document.getElementById("durationPicker"),
 	};
 
+	// Read live (.matches) at each use, so a change to the OS setting applies without a reload.
 	const reduceMotion = window.matchMedia
 		? window.matchMedia("(prefers-reduced-motion: reduce)")
 		: { matches: false };
 
+	// notes: the composition (see the header). selectedDuration: the length new notes get. volume: the master gain,
+	// 0–1. bpm: quarter-note beats per minute. octave: the one the computer keyboard plays, from OCTAVES.
+	// playbackToken: bumped by stopPlayback; a run that sees it change has been cancelled. audioContext and
+	// masterGain are created on the first Play (ensureAudio).
 	const state = {
 		notes: [],
 		selectedDuration: 4,
@@ -102,6 +135,11 @@
 	};
 
 	// ── Pitch helpers ────────────────────────────────────────────────────────
+	/**
+	 * Reads a stored or imported pitch: "rest" gives { rest: true }, a pitch id gives { step, alter, octave } (step
+	 * indexes STEPS, alter is -1, 0 or 1). Nordic B takes no accidental and reads as Hb. null for anything else, or
+	 * for a pitch outside C2–C6.
+	 */
 	function parsePitch(raw) {
 		if (raw === "rest") {
 			return { rest: true };
@@ -133,6 +171,8 @@
 		return pitch;
 	}
 
+	// Three spellings of a pitch. pitchId is the stored form and each key's data-pitch (ASCII # and b); pitchLabel
+	// is for the status line (♯ ♭); pitchSpoken is for accessible names and staff tooltips ("C sharp 4").
 	function pitchId(pitch) {
 		if (pitch.rest) {
 			return "rest";
@@ -141,10 +181,12 @@
 		return `${STEPS[pitch.step]}${accidental}${pitch.octave}`;
 	}
 
+	// MIDI note number: C4 = 60, A4 = 69.
 	function pitchMidi(pitch) {
 		return 12 * (pitch.octave + 1) + STEP_SEMITONES[STEPS[pitch.step]] + pitch.alter;
 	}
 
+	// Equal temperament from A4 = 440 Hz.
 	function pitchFrequency(pitch) {
 		return 440 * Math.pow(2, (pitchMidi(pitch) - 69) / 12);
 	}
@@ -170,11 +212,15 @@
 		return pitch.octave * 7 + pitch.step;
 	}
 
+	// Diatonic indices of the treble staff's bottom line (E4), the bass staff's bottom line (G2) and middle C.
 	const D_E4 = 4 * 7 + 2;
 	const D_G2 = 2 * 7 + 4;
 	const D_C4 = 4 * 7;
 
 	// Middle C and up are written on the treble staff, below on the bass staff.
+	// The split is by written step, not by sound: Cb4 goes on the treble staff. Returns the staff; position, in
+	// diatonic steps above that staff's bottom line (0 to 8 is the staff: even on a line, odd in a space; -2 and
+	// below or 10 and above take ledger lines); y, the note's centre; and bottom, the y of that bottom line.
 	function staffPlacement(pitch) {
 		const d = diatonic(pitch);
 		if (d >= D_C4) {
@@ -185,6 +231,8 @@
 		return { staff: "bass", position, y: BASS_BOTTOM - position * LINE_GAP, bottom: BASS_BOTTOM };
 	}
 
+	// The canonical { pitch, duration } of a stored or imported note, or null if its pitch can't be read. An unknown
+	// duration becomes a quarter note.
 	function normalizeNote(note) {
 		if (!note || typeof note !== "object") {
 			return null;
@@ -212,20 +260,29 @@
 		return match ? match.label : `1/${value}`;
 	}
 
+	// Seconds a 1/denominator note lasts at the current tempo.
 	function noteDurationSeconds(denominator) {
 		const beatSeconds = 60 / state.bpm;
 		return beatSeconds * (BEATS_PER_MEASURE / denominator);
 	}
 
+	// Staff width of a 1/denominator note: proportional to its beats, so bar lines fall every MEASURE_WIDTH.
 	function noteWidth(denominator) {
 		return (MEASURE_WIDTH / BEATS_PER_MEASURE) * (BEATS_PER_MEASURE / denominator);
 	}
 
+	// For pitch ids in attribute selectors. Without CSS.escape, the fallback escapes "#", the one character in a
+	// pitch id that is not a letter or digit.
 	function cssEscape(value) {
 		return window.CSS && CSS.escape ? CSS.escape(value) : value.replace(/[#]/g, "\\$&");
 	}
 
 	// ── Audio ────────────────────────────────────────────────────────────────
+	/**
+	 * Creates the AudioContext and master gain on first use, resumes the context and sets the volume. Browsers, iOS
+	 * Safari above all, start audio only from a user gesture: startPlayback calls this first thing, so the context
+	 * is created and resume() called synchronously inside the click or keypress that pressed Play.
+	 */
 	async function ensureAudio() {
 		if (!state.audioContext) {
 			state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -240,6 +297,12 @@
 		state.masterGain.gain.setValueAtTime(state.volume, state.audioContext.currentTime);
 	}
 
+	/**
+	 * Schedules one voice on the audio clock: a triangle oscillator through its own envelope into the master gain.
+	 * startTime is AudioContext time and both arguments are in seconds; a rest schedules nothing. The envelope rises
+	 * over 20 ms, holds, and falls over the last 80 ms; a note too short for that rises over its first fifth and
+	 * falls over its last quarter.
+	 */
 	function scheduleNote(pitchString, startTime, durationSeconds) {
 		const pitch = parsePitch(pitchString);
 		if (!pitch || pitch.rest) {
@@ -253,8 +316,10 @@
 		const attack = Math.min(0.02, durationSeconds * 0.2);
 		const release = Math.min(0.08, durationSeconds * 0.25);
 		// Gentle equal-loudness tilt: low triangle tones read quieter, the top
-		// octave brighter. Scales between ~1.25 at C2 and ~0.85 at C6.
+		// octave brighter. Scales from ~1.23 at C2 through 1 at middle C to ~0.81 at C6.
 		const tilt = Math.min(1.3, Math.max(0.8, Math.pow(261.63 / frequency, 0.15)));
+		// Exponential ramps can't reach 0: the envelope runs from and to 0.0001, and the peak stays above that even
+		// at volume 0.
 		const peak = Math.max(state.volume * tilt, 0.0002);
 
 		osc.type = "triangle";
@@ -267,10 +332,12 @@
 		osc.connect(gain);
 		gain.connect(state.masterGain);
 		osc.start(startTime);
-		osc.stop(end + 0.05);
+		osc.stop(end + 0.05); // once the envelope has faded out
 	}
 
 	// ── Persistence ──────────────────────────────────────────────────────────
+	// Called after every change, so a reload (pwa.js applying an update) loses nothing. Export keeps less: only the
+	// notes and tempo (exportComposition).
 	function saveToStorage() {
 		const payload = {
 			bpm: state.bpm,
@@ -287,6 +354,8 @@
 		}
 	}
 
+	// Restores the draft into state and the controls it sets; init() brings the rest of the UI in line. Each field is
+	// checked on its own, so a partial or older draft loads what it can.
 	function loadFromStorage() {
 		try {
 			const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -328,6 +397,8 @@
 	}
 
 	// ── Keyboard (piano) ─────────────────────────────────────────────────────
+	// The short press animation (.struck) for a note entered by tap or computer key; the Rest button stands in for
+	// a rest. With reduced motion the class comes straight off again.
 	function flashPianoKey(pitchString) {
 		const button = pitchString === "rest"
 			? ui.restBtn
@@ -346,6 +417,8 @@
 		}
 	}
 
+	// One key: its name (sharps as ♯, each C with its octave as a subscript) and the computer key that plays it. A tap
+	// also moves the computer keyboard to the key's octave; C6 has no octave of its own and leaves it where it is.
 	function makeKey(pitch, colour, hint) {
 		const id = pitchId(pitch);
 		const button = document.createElement("button");
@@ -365,6 +438,8 @@
 		return button;
 	}
 
+	// One labelled octave group. whiteCount is 7, or 1 for the closing C6, which has no sharps. styles.css lays the
+	// keys out from --whites, the white-key count, and each black key's --slot (.octave-keys, .key.black).
 	function buildOctave(octave, whiteCount) {
 		const group = document.createElement("div");
 		group.className = "octave";
@@ -387,7 +462,7 @@
 			keys.appendChild(makeKey({ step, alter: 0, octave }, "white", WHITE_HINTS[step]));
 			if (whiteCount === 7 && BLACK_AFTER.includes(step)) {
 				const black = makeKey({ step, alter: 1, octave }, "black", BLACK_HINTS[step]);
-				black.style.setProperty("--slot", String(step + 1));
+				black.style.setProperty("--slot", String(step + 1)); // on the gap after white key `step`
 				keys.appendChild(black);
 			}
 		}
@@ -434,6 +509,11 @@
 		});
 	}
 
+	/**
+	 * Sets the octave the computer keyboard plays (clamped to OCTAVES) and everything that shows it: the active group,
+	 * the K hint on the next C, the tabs and the arrows. options.scroll brings it into view and options.announce
+	 * reports it in the status line. Saves.
+	 */
 	function setOctave(octave, options) {
 		const opts = options || {};
 		const next = Math.max(OCTAVES[0], Math.min(OCTAVES[OCTAVES.length - 1], octave));
@@ -463,6 +543,8 @@
 		saveToStorage();
 	}
 
+	// Shows the edge shadow on a side only while there is more keyboard that way; 2 px of slack for fractional
+	// scroll positions.
 	function updateKeyboardFades() {
 		const frame = ui.piano;
 		const max = frame.scrollWidth - frame.clientWidth;
@@ -472,6 +554,7 @@
 	}
 
 	// ── Staff drawing ────────────────────────────────────────────────────────
+	// The line above the staff: notes (rests count), beats (quarter notes) and seconds at the current tempo.
 	function updateMeta() {
 		const beatTotal = state.notes.reduce((sum, note) => sum + BEATS_PER_MEASURE / note.duration, 0);
 		const seconds = state.notes.reduce((sum, note) => sum + noteDurationSeconds(note.duration), 0);
@@ -486,6 +569,8 @@
 		return el;
 	}
 
+	// A sharp (alter 1), flat (-1) or natural (0), drawn as paths at (x, y): left of the head, on the note's line or
+	// space.
 	function drawAccidental(group, alter, x, y) {
 		const g = createSvgEl("g", { class: "accidental", transform: `translate(${x} ${y})` });
 		if (alter === 1) {
@@ -501,6 +586,8 @@
 		group.appendChild(g);
 	}
 
+	// The F clef, drawn here (the G clef is an image, assets/g-clef.svg): a head on the F3 line, its curl, and the
+	// two dots in the spaces either side of that line.
 	function drawBassClef(parent) {
 		const x = 22;
 		const f = BASS_TOP + SPACE; // the F3 line the clef is named for
@@ -525,6 +612,8 @@
 			group.appendChild(createSvgEl("rect", { class: "note-head rest", x: centerX - 7, y: TREBLE_TOP + SPACE * 2 - LINE_GAP, width: 14, height: LINE_GAP }));
 			return;
 		}
+		// Quarter and eighth rests: a stylised block on the middle line (the Rest button's glyph), the eighth with a
+		// dot above it.
 		const restY = TREBLE_TOP + SPACE * 2;
 		group.appendChild(createSvgEl("rect", {
 			class: "note-head rest",
@@ -539,6 +628,8 @@
 		}
 	}
 
+	// One note: ledger lines, accidental, head, stem and flag. accidental is the alter to print (a natural is 0), or
+	// null for none; drawStaff decides it from the measure.
 	function drawNote(group, pitch, duration, centerX, accidental) {
 		const place = staffPlacement(pitch);
 		const y = place.y;
@@ -557,6 +648,7 @@
 			drawAccidental(group, accidental, centerX - 17, y);
 		}
 
+		// Whole and half notes have open heads. A head is an ellipse tilted 20°, as engraved; a whole note has no stem.
 		const open = duration <= 2;
 		group.appendChild(createSvgEl("ellipse", {
 			class: open ? "note-head open" : "note-head",
@@ -576,7 +668,7 @@
 		const middleY = place.bottom - 4 * LINE_GAP;
 		const stemX = stemUp ? centerX + 6.8 : centerX - 6.8;
 		const stemY1 = stemUp ? y - 2 : y + 2;
-		let stemY2 = stemUp ? y - 36 : y + 36;
+		let stemY2 = stemUp ? y - 36 : y + 36; // three staff spaces
 		stemY2 = stemUp ? Math.min(stemY2, middleY) : Math.max(stemY2, middleY);
 		group.appendChild(createSvgEl("line", { class: "note-stem", x1: stemX, y1: stemY1, x2: stemX, y2: stemY2 }));
 
@@ -588,6 +680,11 @@
 		}
 	}
 
+	/**
+	 * Rebuilds the whole SVG from state.notes: paper, both staves, brace, clefs and bar lines, then one
+	 * <g class="note-group" data-index="i"> per note (playback highlights it by that index) and the #playhead line.
+	 * Ends scrolled to the end, where the newest note is.
+	 */
 	function drawStaff() {
 		const beatTotal = state.notes.reduce((sum, note) => sum + BEATS_PER_MEASURE / note.duration, 0);
 		// Fill the visible width with empty measures so wide screens show a full
@@ -663,6 +760,7 @@
 			const centerX = cursorX + widthPx / 2;
 			const pitch = parsePitch(note.pitch) || { rest: true };
 
+			// A note belongs to the measure it starts in; one that runs past a bar line is not split or tied.
 			const measure = Math.floor(beat / BEATS_PER_MEASURE + 1e-9);
 			if (measure !== currentMeasure) {
 				currentMeasure = measure;
@@ -673,6 +771,8 @@
 				drawRest(group, note.duration, centerX);
 			} else {
 				// Accidentals hold for the rest of the measure at that staff position.
+				// With no key signature every position starts the measure natural, so a sign is printed whenever a
+				// note's alter differs from the last one there: a sharp or flat, or a natural that cancels one.
 				const key = `${pitch.octave}:${pitch.step}`;
 				const current = measureAccidentals.has(key) ? measureAccidentals.get(key) : 0;
 				const accidental = pitch.alter !== current ? pitch.alter : null;
@@ -721,6 +821,7 @@
 	}
 
 	// ── Editing ──────────────────────────────────────────────────────────────
+	// Appends "rest" or a pitch id at the selected length; a pitch that can't be read is ignored.
 	function addNote(pitchString) {
 		const pitch = parsePitch(pitchString);
 		if (!pitch) {
@@ -755,6 +856,11 @@
 	}
 
 	// ── Playback ─────────────────────────────────────────────────────────────
+	/**
+	 * Ends a run: bumping playbackToken makes its pending highlight timers and its loop return. The audio graph is
+	 * left alone, so voices already scheduled for the current pass still sound. startPlayback calls it too, to clear
+	 * any earlier run. Tells pwa.js (notar:playback) that playback has stopped.
+	 */
 	function stopPlayback() {
 		state.playbackToken += 1;
 		state.playing = false;
@@ -765,6 +871,11 @@
 		setPlayhead(STAFF_LEFT, false);
 	}
 
+	/**
+	 * Plays state.notes from the start. Each pass schedules all its notes on the audio clock at once (scheduleNote);
+	 * the staff and key highlights follow on main-thread timers, which may fire a little late but never move the
+	 * sound. Loop is read once, at Play; notes added while playing join the next pass.
+	 */
 	async function startPlayback() {
 		if (!state.notes.length) {
 			setStatus("Add some notes before playing.", true);
@@ -783,7 +894,7 @@
 
 		async function runOnce() {
 			let cursorX = STAFF_LEFT;
-			let audioTime = state.audioContext.currentTime + 0.08;
+			let audioTime = state.audioContext.currentTime + 0.08; // a little ahead, so no note starts in the past
 
 			for (let index = 0; index < state.notes.length; index += 1) {
 				if (token !== state.playbackToken) {
@@ -813,6 +924,7 @@
 						key.classList.add("sounding");
 					}
 					setPlayhead(centerX, true);
+					// Keep the sounding note about a third of the way into the view.
 					ui.staffScroll.scrollLeft = Math.max(0, centerX - ui.staffScroll.clientWidth * 0.35);
 				}, highlightAt);
 
@@ -820,6 +932,8 @@
 				audioTime += durationSeconds;
 			}
 
+			// Wait out the pass. A loop's next pass is scheduled only then, from the current audio time, so a gap of
+			// at least 120 ms (this 40 ms plus the 80 ms lead) separates the passes.
 			const totalMs = Math.max(0, (audioTime - state.audioContext.currentTime) * 1000);
 			await new Promise((resolve) => window.setTimeout(resolve, totalMs + 40));
 
@@ -841,6 +955,8 @@
 	}
 
 	// ── Import / export ──────────────────────────────────────────────────────
+	// Downloads { version: 2, bpm, notes } as notar_<date>.json, the file importComposition reads. Version 2 pitches
+	// carry an octave; version-1 files have none and import as octave 4.
 	function exportComposition() {
 		const payload = {
 			version: 2,
@@ -853,10 +969,12 @@
 		anchor.href = url;
 		anchor.download = `notar_${new Date().toISOString().slice(0, 10)}.json`;
 		anchor.click();
-		window.setTimeout(() => URL.revokeObjectURL(url), 0);
+		window.setTimeout(() => URL.revokeObjectURL(url), 0); // next tick: the click has started the download
 		setStatus("Composition exported.");
 	}
 
+	// Replaces the composition (and the tempo, if the file has one) with the file's notes. Notes that can't be read
+	// are skipped and counted; a file with notes but none readable is refused and changes nothing.
 	function importComposition(file) {
 		const reader = new FileReader();
 		reader.onload = () => {
@@ -887,6 +1005,7 @@
 		reader.readAsText(file);
 	}
 
+	// ── Controls and shortcuts ───────────────────────────────────────────────
 	// The segmented note-length control mirrors the (hidden) #duration slider,
 	// which remains the single source of truth the rest of the app reads.
 	function syncDurationPicker() {
@@ -938,6 +1057,8 @@
 		ui.octaveDownBtn.addEventListener("click", () => setOctave(state.octave - 1, { scroll: true, announce: true }));
 		ui.octaveUpBtn.addEventListener("click", () => setOctave(state.octave + 1, { scroll: true, announce: true }));
 		ui.piano.addEventListener("scroll", updateKeyboardFades, { passive: true });
+		// The staff fills the visible width, so a resize redraws it, at most once a frame. Not while playing: a
+		// redraw replaces the note groups that the pending highlight timers hold.
 		let resizeFrame = 0;
 		window.addEventListener("resize", () => {
 			updateKeyboardFades();
@@ -966,9 +1087,11 @@
 			if (file) {
 				importComposition(file);
 			}
-			ui.importInput.value = "";
+			ui.importInput.value = ""; // so choosing the same file again still fires change
 		});
 
+		// Shortcuts (listed in index.html's footer). None while a field or slider has focus (a length radio doesn't
+		// count), and none with Ctrl, Cmd or Alt, so the browser's own shortcuts keep working.
 		window.addEventListener("keydown", (event) => {
 			if (event.target.matches("input:not([type=radio]), textarea, select")) {
 				return;
@@ -981,7 +1104,7 @@
 			if (mapped) {
 				event.preventDefault();
 				if (event.repeat) {
-					return;
+					return; // a held key enters one note
 				}
 				const octave = state.octave + mapped.shift;
 				addNote(pitchId({ step: mapped.step, alter: mapped.alter, octave }));
@@ -1009,6 +1132,7 @@
 				return;
 			}
 			if (event.key === "Enter") {
+				// On a focused button or link Enter activates it as usual; anywhere else it plays.
 				if (event.target.closest && event.target.closest("button, a")) {
 					return;
 				}
@@ -1023,13 +1147,15 @@
 		});
 	}
 
+	// ── Start-up ─────────────────────────────────────────────────────────────
+	// The keys are built before setOctave marks one, and the draft is loaded before the controls are set from state.
 	function init() {
 		buildPiano();
 		bindControls();
 		loadFromStorage();
 
 		const durationIndex = DURATIONS.findIndex((entry) => entry.value === state.selectedDuration);
-		ui.duration.value = String(durationIndex >= 0 ? durationIndex : 2);
+		ui.duration.value = String(durationIndex >= 0 ? durationIndex : 2); // 2: the quarter note
 		ui.durationLabel.textContent = durationLabel(state.selectedDuration);
 		syncDurationPicker();
 		ui.volume.value = String(state.volume);

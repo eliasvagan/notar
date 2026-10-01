@@ -8,6 +8,7 @@
  * manifest errors; the service worker controls the page; a new version waits, shows the quiet hint only when
  * not playing, and applies from it (old cache deleted); and an offline reload still composes and plays.
  * BASE=https://eliasv.com/projects/notar/ runs the installability, control and offline checks against a live site.
+ * HOST_RULES is passed to Chrome as --host-resolver-rules, e.g. to send BASE's host name to another server.
  */
 "use strict";
 
@@ -73,6 +74,7 @@ async function check(name, fn) {
 	}
 }
 
+// Resolves once an activated service worker controls the page.
 const controlled = (page) => page.waitForFunction(() => navigator.serviceWorker.controller && navigator.serviceWorker.controller.state === "activated", { timeout: 15000 });
 
 async function main() {
@@ -118,6 +120,7 @@ async function main() {
 			await check("a new version waits, the hint stays hidden while playing, and applying it swaps caches", async () => {
 				const before = await page.evaluate(async () => caches.keys());
 				assert.strictEqual(before.length, 1, before.join());
+				// A note to play and to find again after the update; then "deploy" a new version.
 				await page.evaluate(() => document.querySelector('.key[data-pitch="C4"]').click());
 				swOverride = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").replace(/const VERSION = '[0-9a-f]*';/, "const VERSION = 'e2e000000000';");
 				// Loop, so playback is still going when the update lands.
@@ -125,6 +128,7 @@ async function main() {
 				await page.waitForFunction(() => window.Notar.isPlaying());
 				await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
 				await page.waitForFunction(async () => !!(await navigator.serviceWorker.getRegistration()).waiting, { timeout: 15000 });
+				// Give pwa.js time to react to the waiting worker, so a hint wrongly shown would be caught below.
 				await new Promise((r) => setTimeout(r, 300));
 				assert.ok(await page.$eval("#updateBtn", (b) => b.hidden), "hint shown during playback");
 				assert.ok(await page.evaluate(() => window.Notar.isPlaying()), "playback was interrupted");
@@ -152,6 +156,7 @@ async function main() {
 			await page.setOfflineMode(true);
 			await client.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
 			await page.reload({ waitUntil: "load" });
+			// 49 keys: 29 white and 20 black, C2–C6.
 			const state = await page.evaluate(() => ({
 				controlled: !!navigator.serviceWorker.controller,
 				keys: document.querySelectorAll(".key").length,

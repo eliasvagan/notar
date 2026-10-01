@@ -85,6 +85,7 @@ async function openPage(browser, base, vp, errors) {
 	});
 	page.on("pageerror", (err) => errors.push(err.message));
 	await page.setViewport({ width: vp.width, height: vp.height, isMobile: vp.touch, hasTouch: vp.touch });
+	// Clear the saved draft and reload, so every page starts from an empty composition (app.js reads it at load).
 	await page.goto(base, { waitUntil: "networkidle0" });
 	await page.evaluate(() => localStorage.clear());
 	await page.reload({ waitUntil: "networkidle0" });
@@ -95,6 +96,7 @@ async function main() {
 	const puppeteer = loadPuppeteer();
 	const server = await serve();
 	const base = `http://127.0.0.1:${server.address().port}/`;
+	// The autoplay flag lets headless Chrome start Web Audio without a real user gesture.
 	const browser = await puppeteer.launch({ args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
 
 	try {
@@ -125,6 +127,7 @@ async function main() {
 					staffAbovePiano: document.getElementById("staffSvg").getBoundingClientRect().bottom <= piano.getBoundingClientRect().top,
 				};
 			});
+			// 29 white keys: four octaves of 7 and the closing C6; 20 black: four octaves of 5.
 			await check("keyboard spans C2–C6 in octave groups", () => {
 				assert.deepStrictEqual(layout.labels, ["C2", "C3", "C4", "C5", "C6"]);
 				assert.strictEqual(layout.whiteCount, 29);
@@ -189,6 +192,7 @@ async function main() {
 			assert.strictEqual(await page.evaluate(() => document.querySelector(".octave.active").dataset.octave), "3");
 		});
 		await page.click('.octave-tab[data-octave="4"]');
+		// Blur the tab: on a focused button Space keeps its native meaning instead of entering a rest.
 		await page.evaluate(() => document.activeElement && document.activeElement.blur());
 		await page.keyboard.press("a");
 		await page.keyboard.press("w");
@@ -248,6 +252,8 @@ async function main() {
 			assert.deepStrictEqual(r.saved.notes[r.saved.notes.length - 1], { pitch: "G2", duration: 8 });
 		});
 		await check("export writes version 2 with octave pitches", async () => {
+			// Read the export instead of downloading it: a one-shot createObjectURL stub hands over the blob's text,
+			// and anchor clicks do nothing.
 			const text = await page.evaluate(() => new Promise((resolve) => {
 				const original = URL.createObjectURL;
 				URL.createObjectURL = (blob) => { blob.text().then(resolve); URL.createObjectURL = original; return "blob:stub"; };

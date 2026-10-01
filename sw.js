@@ -11,7 +11,7 @@
  *     otherwise shows a quiet "update ready" hint (never while playing); it takes over when that is tapped or on
  *     the next launch.
  */
-const VERSION = '05430208e410';
+const VERSION = '127936778690';
 const PREFIX = 'notar-shell-';
 const SHELL_CACHE = `${PREFIX}${VERSION}`;
 const SHELL = [
@@ -30,7 +30,7 @@ const SHELL = [
 ];
 
 const scope = new URL(self.registration.scope);
-const shellUrl = new URL('./', scope).href;
+const shellUrl = new URL('./', scope).href; // the key SHELL's './' (index.html) is cached under
 
 self.addEventListener('install', (event) => {
   // `reload`: fetch past the HTTP cache, so a new version never precaches an old file.
@@ -44,6 +44,7 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+// 'skip-waiting' comes from pwa.js applying an update; 'version' is asked by tests/e2e-pwa.cjs.
 self.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') self.skipWaiting();
   else if (event.data === 'version') event.source?.postMessage({ version: VERSION });

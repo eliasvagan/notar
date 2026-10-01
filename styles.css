@@ -1,3 +1,17 @@
+/*
+ * All of Notar's styles, in one light theme. Design tokens sit on :root; base rules and the shared pieces (panels,
+ * trays, buttons) come first, then each part of the page, then media queries that retune tokens and layout for
+ * medium widths, touch screens, phones and reduced motion.
+ *
+ *   - app.js builds the keyboard and the staff, and shows state through classes (.octave.active and .reach,
+ *     .key.struck and .sounding, .keyboard-frame.fade-start and .fade-end, .note-group.active, .status.error)
+ *     and through custom properties: --whites on each octave's keys, --slot on each black key.
+ *   - scripts/icons.mjs takes the icon colours from this file by regex: the --accent token, the .key.black and
+ *     .key.white.sounding backgrounds and the .key.sounding box-shadow. Keep those as hex colours.
+ *   - This file is part of the precached shell: after editing it, run node scripts/sw-version.mjs.
+ */
+
+/* ── Design tokens ─────────────────────────────────────────────────────── */
 :root {
 	--ink: #1a1a1a;
 	--muted: #595966;
@@ -23,13 +37,15 @@
 	--white-h: 8rem;
 	--key-gap: 2px;
 	--octave-gap: 0.625rem;
-	color-scheme: light;
+	color-scheme: light; /* light only: form controls and scrollbars stay light in OS dark mode too */
 }
 
+/* ── Base: reset, touch and iOS behaviour ──────────────────────────────── */
 * {
 	box-sizing: border-box;
 }
 
+/* !important so the attribute beats class display rules: #updateBtn is a .btn, which is display: inline-flex. */
 [hidden] {
 	display: none !important;
 }
@@ -98,6 +114,7 @@ a {
 	color: var(--accent);
 }
 
+/* Visually hidden, still read by screen readers. */
 .sr-only {
 	position: absolute;
 	width: 1px;
@@ -115,6 +132,7 @@ a {
 	padding: 2rem clamp(1rem, 2.5vw, 2rem) 3rem;
 }
 
+/* ── Header and update hint ────────────────────────────────────────────── */
 .hero {
 	margin-bottom: 2rem;
 }
@@ -139,7 +157,7 @@ a {
 	max-width: 38rem;
 }
 
-/* A new version is ready (pwa.js; hidden while playing). Quiet: the accent colour, one slow nudge, no modal. */
+/* A new version is ready (pwa.js; hidden while playing). Quiet: the accent colour, three slow nudges, no modal. */
 .update-hint {
 	flex: none;
 	color: var(--accent);
@@ -156,6 +174,9 @@ a {
 	90% { transform: translateY(-1px); }
 }
 
+/* ── Panels ────────────────────────────────────────────────────────────── */
+/* min-width: 0 lets a panel, a flex item of .workspace, shrink below its content, so the wide staff and keyboard
+ * scroll inside it instead of widening the page. */
 .panel {
 	background: var(--panel);
 	border: 2px solid var(--border);
@@ -165,6 +186,7 @@ a {
 	min-width: 0;
 }
 
+/* One control tall, so a heading lines up with any controls beside it (.panel-head, .staff-toolbar). */
 .panel h2 {
 	margin: 0 0 0.85rem;
 	font-size: 0.8rem;
@@ -186,7 +208,7 @@ a {
 	padding: var(--gap-in);
 	background: var(--region);
 	border: 1px solid #d8dae8;
-	border-radius: calc(var(--radius) + var(--gap-in));
+	border-radius: calc(var(--radius) + var(--gap-in)); /* the controls' radius plus the padding: concentric corners */
 }
 
 /* ── Buttons: one shape, one height; colour and fill encode role ─────────── */
@@ -285,7 +307,7 @@ a {
 	border-color: var(--border);
 }
 
-/* Destructive — the only red in the interface. */
+/* Destructive — the only red button in the interface. */
 .btn.danger {
 	color: var(--danger);
 }
@@ -348,6 +370,7 @@ a:focus-visible {
 	flex: none;
 }
 
+/* minmax(0, 1fr): two equal columns, which may shrink below their content's width (plain 1fr may not). */
 .mix {
 	flex: 1 1 20rem;
 	display: grid;
@@ -431,6 +454,7 @@ input[type="range"] {
 	gap: 0.75rem;
 }
 
+/* .length-picker is a fieldset: no frame, and min-width: 0, since a fieldset won't shrink below its content. */
 .octave-nav,
 .length-picker {
 	display: flex;
@@ -442,6 +466,7 @@ input[type="range"] {
 	min-width: 0;
 }
 
+/* A floated legend is not drawn in the fieldset's border: it becomes an ordinary flex item beside the tray. */
 .length-picker legend {
 	float: left;
 	padding: 0;
@@ -459,6 +484,8 @@ input[type="range"] {
 	display: flex;
 }
 
+/* The real radio, invisible, covers its whole chip: all of it is the hit target, and the radio keeps its keyboard
+ * and screen-reader behaviour. Its focus ring is drawn on the span after it (Focus, above). */
 .segmented input {
 	position: absolute;
 	opacity: 0;
@@ -533,6 +560,8 @@ input[type="range"] {
 	position: relative;
 }
 
+/* The edge fades sit over the black keys (z-index 2) and let taps through to the keys beneath. app.js toggles
+ * .fade-start and .fade-end from the scroll position. */
 .keyboard-frame::before,
 .keyboard-frame::after {
 	content: "";
@@ -563,6 +592,8 @@ input[type="range"] {
 	opacity: 1;
 }
 
+/* A swipe that runs off either end stays in the keyboard rather than chaining to the page. Proximity snapping
+ * settles a fling on a centred octave only when it ends near one. */
 .piano {
 	display: flex;
 	flex-wrap: nowrap;
@@ -575,6 +606,8 @@ input[type="range"] {
 	padding-bottom: 0.75rem;
 }
 
+/* Spare width is shared out by white-key count (7 here, 1 for the closing C6 below), so keys widen alike in every
+ * group. No shrinking: below the keys' minimum width the row scrolls instead. */
 .octave {
 	flex: 7 0 auto;
 	display: flex;
@@ -612,6 +645,8 @@ input[type="range"] {
 	color: var(--accent);
 }
 
+/* --kw is one white key's width: the row less its gaps, over --whites (set by app.js). The white keys grow equally
+ * from the same basis, so each is exactly that wide; the black keys are sized and placed with it. */
 .octave-keys {
 	--kw: calc((100% - (var(--whites) - 1) * var(--key-gap)) / var(--whites));
 	position: relative;
@@ -643,6 +678,8 @@ input[type="range"] {
 	box-shadow: 0 2px 0 var(--border);
 }
 
+/* Black keys float over the whites, 64% of a white key wide and centred on the gap after the --slot-th white key
+ * (app.js sets --slot): --slot keys and gaps in, back half a gap, back half its own width (0.32 = 0.64 / 2). */
 .key.black {
 	position: absolute;
 	top: 0;
@@ -686,6 +723,8 @@ input[type="range"] {
 	background: var(--accent);
 }
 
+/* Pressed: the key drops 2px onto its shadow. .struck is app.js's brief flash for a note just entered; .sounding
+ * marks the key of the note playing, edged in the gold of the playing note on the staff. */
 .key:active,
 .key.struck {
 	transform: translateY(2px);
@@ -723,7 +762,7 @@ input[type="range"] {
 /* Shortcut letters only on the octave the computer keyboard plays (plus the
  * next C, reached with K), so the hints point at exactly one place. */
 .key .hint {
-	visibility: hidden;
+	visibility: hidden; /* not display: none, so the key's name keeps its place */
 }
 
 .octave.active .key .hint,
@@ -740,6 +779,7 @@ input[type="range"] {
 }
 
 /* ── Staff panel ───────────────────────────────────────────────────────── */
+/* overflow: hidden clips the white toolbar and footer to the panel's rounded corners. */
 .panel.staff-panel {
 	padding: 0;
 	overflow: hidden;
@@ -767,6 +807,7 @@ input[type="range"] {
 	font-variant-numeric: tabular-nums;
 }
 
+/* The staff scrolls sideways here; app.js scrolls it to the newest note on each edit and along with playback. */
 .staff-scroll {
 	overflow-x: auto;
 	overflow-y: hidden;
@@ -780,6 +821,7 @@ input[type="range"] {
 	height: 290px;
 }
 
+/* ── Staff drawing (SVG from app.js) ───────────────────────────────────── */
 .note-group {
 	cursor: default;
 }
@@ -834,6 +876,7 @@ input[type="range"] {
 	stroke-width: 1.6;
 }
 
+/* The note playing, in the same gold as its key's .sounding edge. */
 .note-group.active .note-head {
 	fill: #d4a017;
 	stroke: #8a6500;
@@ -888,6 +931,7 @@ input[type="range"] {
 	stroke-linecap: round;
 }
 
+/* ── Status line and shortcuts ─────────────────────────────────────────── */
 .staff-footer {
 	display: flex;
 	flex-wrap: wrap;
@@ -921,6 +965,7 @@ kbd {
 	border-radius: 4px;
 }
 
+/* ── Page footer ───────────────────────────────────────────────────────── */
 .page-footer {
 	margin-top: 2rem;
 	font-size: 0.9rem;
@@ -953,6 +998,7 @@ kbd {
 		display: none;
 	}
 
+	/* A touch browser keeps :hover on the last key tapped; undo the hover tint so it doesn't linger. */
 	.key.white:hover {
 		background: #fff;
 		border-color: var(--border);
@@ -1037,6 +1083,7 @@ kbd {
 	}
 }
 
+/* ── Small phones: one tool per row ────────────────────────────────────── */
 @media (max-width: 479px) {
 	/* Each tool gets its own full-width row; tabs share it evenly. */
 	.octave-nav,
@@ -1054,6 +1101,7 @@ kbd {
 		min-width: 0;
 	}
 
+	/* The "Octave" label and the Rest button's word are visually hidden (the .sr-only pattern) to fit the row. */
 	.octave-nav .tool-label {
 		position: absolute;
 		width: 1px;
@@ -1080,6 +1128,8 @@ kbd {
 	}
 }
 
+/* ── Reduced motion ────────────────────────────────────────────────────── */
+/* !important beats each component's own transition and animation; pressed keys and buttons stop moving too. */
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const css = readFileSync(resolve(ROOT, 'styles.css'), 'utf8');
+// The first hex colour in `prop` of the first `sel { … }` rule in styles.css that sets it.
 const rule = (sel, prop) => css.match(new RegExp(`${sel.replace(/\./g, '\\.')}\\s*\\{[^}]*?${prop}:[^;]*?(#[0-9a-f]{3,6})`, 'i'))[1];
 const ACCENT = css.match(/--accent:\s*(#[0-9a-f]+)/i)[1]; // the tile
 const BLACK = rule('.key.black', 'background'); // the black keys
@@ -27,6 +28,7 @@ function mark({ bleed = false, scale = 1 } = {}) {
   return `<rect width="32" height="32"${bleed ? '' : ' rx="7"'} fill="${ACCENT}"/>`
     + `<g${t}>`
     + `<g fill="${WHITE}"><rect x="4" y="4" width="6" height="24" rx="1.5"/><rect x="22" y="4" width="6" height="24" rx="1.5"/></g>`
+    // The struck middle key, then its gold bottom edge (the .key.sounding inset shadow), then the black keys on top.
     + `<rect x="12" y="4" width="8" height="24" rx="1.5" fill="${STRUCK}"/>`
     + `<path d="M12 24h8v2.5a1.5 1.5 0 0 1-1.5 1.5h-5a1.5 1.5 0 0 1-1.5-1.5Z" fill="${GOLD}"/>`
     + `<g fill="${BLACK}"><rect x="8" y="2" width="6" height="16" rx="1.5"/><rect x="18" y="2" width="6" height="16" rx="1.5"/></g>`
@@ -51,6 +53,7 @@ function loadPuppeteer() {
 }
 const browser = await loadPuppeteer().launch({ args: ['--no-sandbox'] });
 const page = await browser.newPage();
+// Renders an SVG to a px-square PNG with a transparent background.
 async function png(source, px) {
   await page.setViewport({ width: px, height: px, deviceScaleFactor: 1 });
   const sized = source.replace('<svg ', `<svg width="${px}" height="${px}" `);
@@ -69,6 +72,8 @@ for (const [name, source, px] of outputs) {
 // favicon.ico: PNG-compressed entries at 16, 32 and 48 (supported by every browser that still asks for .ico).
 const images = [];
 for (const px of [16, 32, 48]) images.push([px, Buffer.from(await png(plain, px))]);
+// ICONDIR (reserved 0, type 1 = icon, image count), then a 16-byte entry per image: width, height, palette size 0,
+// reserved, 1 colour plane, 32 bits per pixel, byte length and offset of its PNG.
 const header = Buffer.alloc(6 + 16 * images.length);
 header.writeUInt16LE(0, 0); header.writeUInt16LE(1, 2); header.writeUInt16LE(images.length, 4);
 let offset = header.length;
