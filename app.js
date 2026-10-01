@@ -7,7 +7,10 @@
  *     "Eb5" (C2–C6), low to high: one is a note, several a chord, none a rest. duration is the note value's
  *     denominator (1 whole … 16 sixteenth); dotted makes a note half as long again.
  *   - state.caret is the cursor: the gap before note `caret`, from 0 to notes.length. New notes go in there. The
- *     note just before it is the current note, which chord tones, transposing and Delete act on.
+ *     note just before it is the current note, which chord tones, transposing, length changes and Delete act on.
+ *   - The model never splits a note. Only the engraving does (engrave): a note that crosses a bar line is drawn
+ *     as tied segments, and eighths and shorter are beamed by beat. Playback, the cursor and every edit see one
+ *     note.
  *   - Every change to the notes goes through edit(): one undo step, then the staff is redrawn in full and the draft
  *     saved to localStorage at once, so a reload (pwa.js applying an update) loses nothing.
  *   - pwa.js and the tests read window.Notar (end of file); "notar:playback" events on document tell pwa.js
@@ -102,6 +105,43 @@
 	const ACC_COLUMN = 9;
 	const ROOM_AFTER = BEAT_WIDTH * 3; // empty staff kept after the music, to click new notes into
 	const CURSOR_NUDGE = 3; // the cursor line sits this far right of its gap, so a bar line there doesn't hide it
+	// Beams: a bar is a little under half a staff space thick; secondary bars sit BEAM_STEP further toward the
+	// heads. The shortest stem in a group, head centre to the beam's outer edge, is BEAM_STEM plus BEAM_STEM_EXTRA
+	// for each bar after the first, so sixteenths keep clear stem between head and beams. Slope is at most
+	// BEAM_SLOPE (rise over run), and a broken beam is BEAM_STUB long, about a head.
+	const BEAM_THICK = 5;
+	const BEAM_STEP = 8;
+	const BEAM_STEM = 32;
+	const BEAM_STEM_EXTRA = 6;
+	const BEAM_SLOPE = 0.25;
+	const BEAM_STUB = 11;
+	// Each staff's beams stay in their own band (beamFits): the treble's above the middle of the gap between the
+	// staves, the bass's below it, BEAM_CLEAR clear of that line, so the two hands' beams and stems never meet.
+	const GAP_MIDDLE = (TREBLE_BOTTOM + BASS_TOP) / 2;
+	const BEAM_CLEAR = 1;
+	const TIE_ROOM = 10; // extra room before a tied continuation's heads, so even a 32nd's tie reads as an arc
+
+	// ── Rhythm: written values ───────────────────────────────────────────────
+	// The engraver counts time in units of a 32nd note, so every position and length is a whole number: the
+	// shortest note is a dotted sixteenth (3 units), and splitting at a bar line can leave a 32nd.
+	const UNITS_PER_BEAT = 8;
+	const MEASURE_UNITS = UNITS_PER_BEAT * BEATS_PER_MEASURE;
+	// The values a note is written in, longest first. Every length a note can have is one of them, so a note inside
+	// one measure is a single value; a piece cut off at a bar line is a sum of them.
+	const WRITTEN_VALUES = [
+		{ units: 32, duration: 1, dotted: false },
+		{ units: 24, duration: 2, dotted: true },
+		{ units: 16, duration: 2, dotted: false },
+		{ units: 12, duration: 4, dotted: true },
+		{ units: 8, duration: 4, dotted: false },
+		{ units: 6, duration: 8, dotted: true },
+		{ units: 4, duration: 8, dotted: false },
+		{ units: 3, duration: 16, dotted: true },
+		{ units: 2, duration: 16, dotted: false },
+		{ units: 1, duration: 32, dotted: false },
+	];
+	// Flags or beams per written value: eighths one, sixteenths two, 32nds three; a quarter and longer none.
+	const BEAM_COUNT = { 8: 1, 16: 2, 32: 3 };
 
 	// ── Computer-keyboard shortcuts ──────────────────────────────────────────
 	// Computer keyboard: one piano octave laid out like a DAW (home row = white
@@ -155,6 +195,7 @@
 		keyboardFrame: document.getElementById("keyboardFrame"),
 		restBtn: document.getElementById("restBtn"),
 		dotBtn: document.getElementById("dotBtn"),
+		applyLengthBtn: document.getElementById("applyLengthBtn"),
 		chordBtn: document.getElementById("chordBtn"),
 		octaveTabs: document.getElementById("octaveTabs"),
 		octaveDownBtn: document.getElementById("octaveDownBtn"),
@@ -179,7 +220,8 @@
 	// bumped by stopPlayback; a run that sees it change has been cancelled. audioContext and masterGain are created
 	// on first use (ensureAudio). layout: the last engrave() result, which drawing, clicks and playback share.
 	// past and future: undo and redo steps (snapshots). hover: the pointer's last staff position while a mouse is
-	// over it; dragging: the cursor is being dragged along the ruler. sounding: the note lit during playback.
+	// over it; dragging: the cursor is being dragged along the ruler. sounding: the note lit during playback, and
+	// soundingSegment: which of its written segments the playhead is on (a tied note has several).
 	const state = {
 		notes: [],
 		caret: 0,
@@ -200,6 +242,7 @@
 		hover: null,
 		dragging: false,
 		sounding: null,
+		soundingSegment: 0,
 	};
 
 	// Every oscillator scheduled and not yet ended, so Stop can silence what is already queued on the audio clock.
@@ -691,8 +734,10 @@
 	}
 
 	/**
-	 * Enables the Edit actions that can act now. A button that disables itself while focused (the last Undo, say)
-	 * hands focus to the next one that still works, so keyboard users aren't dropped back to the top of the page.
+	 * Enables the actions that can act now: the Edit buttons, and Apply (the length for the current note) beside
+	 * the length picker. A button that disables itself while focused (the last Undo, say) hands focus to the next
+	 * one that still works, Apply to the Dot toggle beside it, so keyboard users aren't dropped back to the top of
+	 * the page.
 	 */
 	function updateEditButtons() {
 		const focused = document.activeElement;
@@ -700,12 +745,16 @@
 		ui.redoBtn.disabled = !state.future.length;
 		ui.deleteBtn.disabled = state.caret === 0;
 		ui.clearBtn.disabled = !state.notes.length;
+		ui.applyLengthBtn.disabled = state.caret === 0;
 		const actions = [ui.undoBtn, ui.redoBtn, ui.deleteBtn, ui.clearBtn];
 		if (focused && focused.disabled && actions.includes(focused)) {
 			const next = actions.find((button) => !button.disabled);
 			if (next) {
 				next.focus();
 			}
+		}
+		if (focused === ui.applyLengthBtn && focused.disabled) {
+			ui.dotBtn.focus();
 		}
 	}
 
@@ -727,9 +776,57 @@
 			const atEnd = index === state.notes.length;
 			state.notes.splice(index, 0, note);
 			state.caret = index + 1;
-			return { message: `${atEnd ? "Added" : "Inserted"} ${describeNote(note)}.`, sound: note };
+			return { message: `${atEnd ? "Added" : "Inserted"} ${describeNote(note)}${acrossBar(index)}.`, sound: note };
 		});
 		flashKeys(pitches.length ? pitches : ["rest"]);
+	}
+
+	/**
+	 * For status messages: ", tied over the bar line" when note `index` of state.notes crosses one (", split at the
+	 * bar line" for a rest), so a learner hears why one note is drawn as two. Empty otherwise.
+	 */
+	function acrossBar(index) {
+		let start = 0;
+		for (let i = 0; i < index; i += 1) {
+			start += Math.round(noteBeats(state.notes[i]) * UNITS_PER_BEAT);
+		}
+		const note = state.notes[index];
+		const end = start + Math.round(noteBeats(note) * UNITS_PER_BEAT);
+		if (Math.floor(start / MEASURE_UNITS) === Math.floor((end - 1) / MEASURE_UNITS)) {
+			return "";
+		}
+		return note.pitches.length ? ", tied over the bar line" : ", split at the bar line";
+	}
+
+	/**
+	 * Gives the current note (the one before the cursor; rests too) a new length: duration, a DURATIONS value, and
+	 * dotted, each left undefined to keep the note's own. One undo step; the notes after it move along with it. The
+	 * length picker isn't touched: it stays the length for new notes.
+	 */
+	function setCurrentLength(duration, dotted) {
+		const index = state.caret - 1;
+		const note = state.notes[index];
+		if (!note) {
+			setStatus("Put the cursor after a note to change its length.", true);
+			return;
+		}
+		const nextDuration = duration === undefined ? note.duration : duration;
+		const nextDotted = dotted === undefined ? Boolean(note.dotted) : dotted;
+		const made = edit(() => {
+			if (nextDuration === note.duration && nextDotted === Boolean(note.dotted)) {
+				return null;
+			}
+			note.duration = nextDuration;
+			if (nextDotted) {
+				note.dotted = true;
+			} else {
+				delete note.dotted; // the canonical note has no dotted: false (normalizeNote)
+			}
+			return { message: `Changed note ${index + 1} to ${describeNote(note)}${acrossBar(index)}.`, sound: note };
+		});
+		if (!made) {
+			setStatus(`Note ${index + 1} is already ${lengthLabel(nextDuration, nextDotted)}.`);
+		}
 	}
 
 	/**
@@ -896,6 +993,20 @@
 		}
 	}
 
+	// Marks the current note's length on the length picker and the Dot toggle (.held), the same accent edge as its
+	// keys: the picker's chosen chip is the length for new notes, the edged one is the note's, and Apply makes them
+	// one.
+	function markHeldLength() {
+		const current = state.notes[state.caret - 1];
+		if (ui.durationPicker) {
+			ui.durationPicker.querySelectorAll("label").forEach((label) => {
+				const entry = DURATIONS[Number(label.querySelector("input").value)];
+				label.classList.toggle("held", Boolean(current) && entry.value === current.duration);
+			});
+		}
+		ui.dotBtn.classList.toggle("held", Boolean(current && current.dotted));
+	}
+
 	// One key: its name (sharps as ♯, each C with its octave as a subscript) and the computer key that plays it. A tap
 	// also moves the computer keyboard to the key's octave; C6 has no octave of its own and leaves it where it is.
 	function makeKey(pitch, colour, hint) {
@@ -1043,12 +1154,134 @@
 		return BEAT_WIDTH * Math.sqrt(beats);
 	}
 
+	function beamCount(duration) {
+		return BEAM_COUNT[duration] || 0;
+	}
+
+	// A length in units as written values, longest first (greedy: 2½ beats is a half and an eighth).
+	function splitUnits(units) {
+		const values = [];
+		let left = units;
+		while (left > 0) {
+			const value = WRITTEN_VALUES.find((entry) => entry.units <= left);
+			values.push(value);
+			left -= value.units;
+		}
+		return values;
+	}
+
 	/**
-	 * One staff's share of a note: its heads (low to high, with y, position, the accidental to print and its column,
-	 * and offset: how far the head sits left or right of the note's centre, for seconds), the stem direction, and
-	 * how far the drawing reaches left and right of the centre. heads: [{ pitch, accidental }] for this staff.
+	 * How a note from `start` lasting `length` (both in units) is written: [{ start, units, duration, dotted }].
+	 * One value when it fits in its measure; otherwise it is cut at every bar line and each piece written as tied
+	 * values. The piece before the first bar line puts its short values first, so the long one lands on a beat (an
+	 * eighth then a dotted half from the "and" of one); pieces after a bar line put the long one first, on the
+	 * downbeat.
 	 */
-	function engravePart(staff, heads, note) {
+	function writtenPieces(start, length) {
+		const pieces = [];
+		const end = start + length;
+		let at = start;
+		while (at < end) {
+			const pieceEnd = Math.min(end, (Math.floor(at / MEASURE_UNITS) + 1) * MEASURE_UNITS);
+			const values = splitUnits(pieceEnd - at);
+			if (at % MEASURE_UNITS !== 0 && pieceEnd < end) {
+				values.reverse();
+			}
+			for (const value of values) {
+				pieces.push({ start: at, units: value.units, duration: value.duration, dotted: value.dotted });
+				at += value.units;
+			}
+		}
+		return pieces;
+	}
+
+	/**
+	 * Gives every segment its heads, by staff (segment.staves: { treble?, bass? } of [{ pitch, accidental }]), with
+	 * the accidental to print or null. Accidentals hold for the rest of the measure at that staff position: with no
+	 * key signature every position starts the measure natural, so a sign is printed whenever a note's alter
+	 * differs from the last one there. A tied continuation prints none and doesn't count as the new measure's own:
+	 * a later note there restates its sign, and a natural after a tied-over sharp or flat is printed as a reminder.
+	 */
+	function spellAccidentals(segments) {
+		let measureOf = -1;
+		let held = new Map(); // "octave:step" → the alter a note in this measure left there
+		let carried = new Map(); // "octave:step" → the alter a tie carried over this measure's bar line
+		for (const segment of segments) {
+			if (segment.measure !== measureOf) {
+				measureOf = segment.measure;
+				held = new Map();
+				carried = new Map();
+			}
+			for (const id of segment.event.note.pitches) {
+				const pitch = parsePitch(id);
+				const key = `${pitch.octave}:${pitch.step}`;
+				let accidental = null;
+				if (!segment.tied) {
+					const current = held.has(key) ? held.get(key) : 0;
+					const reminder = !held.has(key) && carried.has(key) && carried.get(key) !== pitch.alter;
+					accidental = pitch.alter !== current || reminder ? pitch.alter : null;
+					held.set(key, pitch.alter);
+				} else if (segment.start % MEASURE_UNITS === 0) {
+					carried.set(key, pitch.alter);
+				}
+				const staff = staffPlacement(pitch).staff;
+				(segment.staves[staff] = segment.staves[staff] || []).push({ pitch, accidental });
+			}
+		}
+	}
+
+	/**
+	 * Beam groups, one staff at a time: runs of eighths and shorter, one after another, that start in the same beat
+	 * and have heads on that staff. A rest, a quarter or longer, or a note with nothing on that staff ends a run, so
+	 * each hand of a chord across both staves gets its own beam. Runs of two or more are beamed: [{ staff, members
+	 * (segments), stemDown }]. One stem direction for the group, from the head farthest from the middle line, as
+	 * for a chord; engrave turns it if the beam would leave its staff's band.
+	 */
+	function beamGroups(segments) {
+		const groups = [];
+		for (const staff of ["treble", "bass"]) {
+			let run = [];
+			const close = () => {
+				if (run.length > 1) {
+					groups.push({ staff, members: run });
+				}
+				run = [];
+			};
+			for (const segment of segments) {
+				if (!segment.staves[staff] || !beamCount(segment.duration)) {
+					close();
+					continue;
+				}
+				if (run.length && Math.floor(run[0].start / UNITS_PER_BEAT) !== Math.floor(segment.start / UNITS_PER_BEAT)) {
+					close();
+				}
+				run.push(segment);
+			}
+			close();
+		}
+		for (const group of groups) {
+			let above = -Infinity;
+			let below = -Infinity;
+			for (const segment of group.members) {
+				for (const head of segment.staves[group.staff]) {
+					const position = staffPlacement(head.pitch).position;
+					above = Math.max(above, position - 4);
+					below = Math.max(below, 4 - position);
+				}
+				segment.beams[group.staff] = group;
+			}
+			group.stemDown = above >= below;
+		}
+		return groups;
+	}
+
+	/**
+	 * One staff's share of a segment: its heads (low to high, with y, position, the accidental to print and its
+	 * column, and offset: how far the head sits left or right of the centre, for seconds), the stem direction (the
+	 * beam group's, if it has one), and how far the drawing reaches left and right of the centre. heads: [{ pitch,
+	 * accidental }] for this staff.
+	 */
+	function engravePart(staff, heads, segment, beam) {
 		const placed = heads.map(({ pitch, accidental }) => {
 			const place = staffPlacement(pitch);
 			return { pitch, accidental, position: place.position, y: place.y, offset: 0, column: 0 };
@@ -1056,7 +1289,7 @@
 		const low = placed[0].position;
 		const high = placed[placed.length - 1].position;
 		// The note farthest from the middle line (position 4) decides: stem down if it is above, up if below.
-		const stemDown = high - 4 >= 4 - low;
+		const stemDown = beam ? beam.stemDown : high - 4 >= 4 - low;
 
 		// Seconds: two heads a step apart can't share a side of the stem. Going from the stem's end of the chord, a
 		// head a step (or none) from the one before moves across the stem, unless that one already moved.
@@ -1082,13 +1315,15 @@
 		const headLeft = Math.min(...placed.map((head) => head.offset)) - HEAD_RX;
 		const headRight = Math.max(...placed.map((head) => head.offset)) + HEAD_RX;
 		const left = columns.length ? -(headLeft - ACC_GAP - (columns.length - 1) * ACC_COLUMN - 4.5) : -headLeft;
-		const flag = note.duration >= 8 && !stemDown ? STEM_X + 9 : 0;
-		const dot = note.dotted ? headRight + 7 : 0;
+		const flag = beamCount(segment.duration) && !beam && !stemDown ? STEM_X + 9 : 0;
+		const dot = segment.dotted ? headRight + 7 : 0;
 		return {
 			staff,
 			bottom: staff === "treble" ? TREBLE_BOTTOM : BASS_BOTTOM,
 			heads: placed,
 			stemDown,
+			beam: beam || null,
+			stemTip: null, // set by layBeam for a beamed part
 			headLeft,
 			headRight,
 			left,
@@ -1096,71 +1331,225 @@
 		};
 	}
 
+	// Which way a broken beam on stem i points at `level` (2 for sixteenths): right on the group's first note, left
+	// on its last; between, right from a note on the grid of the level above (a sixteenth on an eighth's place
+	// starts that eighth), left otherwise, toward the note it shares that eighth with.
+	function stubPointsRight(stems, i, level) {
+		if (i === 0) {
+			return true;
+		}
+		if (i === stems.length - 1) {
+			return false;
+		}
+		return stems[i].segment.start % (UNITS_PER_BEAT / 2 ** (level - 1)) === 0;
+	}
+
+	/**
+	 * Places a beam group's beam once the columns have their x, sets each part's stemTip on it, and returns the
+	 * bars to draw: [{ staff, x1, y1, x2, y2, thick, level, partial }], y on the bar's edge toward the stem tips and
+	 * thick signed toward the heads. The slope follows the outer notes at half their interval, at most a staff space and
+	 * BEAM_SLOPE, and is level when an inner note reaches further toward the beam than both outer ones. The beam
+	 * then moves out until the shortest stem is long enough for its bars and every stem reaches the middle line.
+	 * The primary bar joins every stem; a deeper bar joins neighbours that both have it, and a note that has it alone
+	 * gets a broken (partial) bar.
+	 */
+	function layBeam(group) {
+		const down = group.stemDown;
+		const stems = group.members.map((segment) => {
+			const part = segment.parts.find((p) => p.staff === group.staff);
+			const near = down ? part.heads[0] : part.heads[part.heads.length - 1]; // the head nearest the beam
+			return { segment, part, x: segment.centerX + (down ? -STEM_X : STEM_X), y: near.y, bars: beamCount(segment.duration) };
+		});
+		const first = stems[0];
+		const last = stems[stems.length - 1];
+		const most = Math.max(...stems.map((stem) => stem.bars));
+		const toward = down ? 1 : -1; // y direction from the heads out to the beam
+		const run = last.x - first.x;
+		const concave = stems.slice(1, -1).some((stem) => (down ? stem.y > Math.max(first.y, last.y) : stem.y < Math.min(first.y, last.y)));
+		const rise = concave ? 0 : clamp(clamp((last.y - first.y) / 2, -SPACE, SPACE), -run * BEAM_SLOPE, run * BEAM_SLOPE);
+		const slope = run > 0 ? rise / run : 0;
+		const middle = first.part.bottom - 4 * LINE_GAP;
+		const shortest = BEAM_STEM + (most - 1) * BEAM_STEM_EXTRA;
+		let origin = down ? -Infinity : Infinity; // the beam's y at the first stem
+		for (const stem of stems) {
+			const reach = down ? Math.max(stem.y + shortest, middle) : Math.min(stem.y - shortest, middle);
+			const at = reach - slope * (stem.x - first.x);
+			origin = down ? Math.max(origin, at) : Math.min(origin, at);
+		}
+		const yAt = (x) => origin + slope * (x - first.x);
+		stems.forEach((stem) => {
+			stem.part.stemTip = yAt(stem.x);
+		});
+
+		// Each level in runs: stems in a row that all have that bar share one; a run of one gets a broken bar.
+		const bars = [];
+		for (let level = 1; level <= most; level += 1) {
+			const inset = -toward * (level - 1) * BEAM_STEP;
+			for (let i = 0; i < stems.length; i += 1) {
+				if (stems[i].bars < level) {
+					continue;
+				}
+				let end = i;
+				while (end + 1 < stems.length && stems[end + 1].bars >= level) {
+					end += 1;
+				}
+				let x1 = stems[i].x;
+				let x2 = stems[end].x;
+				if (end === i) {
+					const right = stubPointsRight(stems, i, level);
+					const length = Math.min(BEAM_STUB, Math.abs(stems[right ? i + 1 : i - 1].x - x1) / 2);
+					[x1, x2] = right ? [x1, x1 + length] : [x1 - length, x1];
+				}
+				bars.push({ staff: group.staff, x1, y1: yAt(x1) + inset, x2, y2: yAt(x2) + inset, thick: -toward * BEAM_THICK, level, partial: end === i });
+				i = end;
+			}
+		}
+		return bars;
+	}
+
+	// Whether a beam's bars (layBeam) stay in their staff's band: the treble's from below the ruler to just above the
+	// middle of the gap between the staves, the bass's from just below it to the bottom of the drawing. The stems end
+	// on the primary bar, so they stay in the band too.
+	function beamFits(group, bars) {
+		const [top, bottom] = group.staff === "treble"
+			? [RULER_HEIGHT + BEAM_CLEAR, GAP_MIDDLE - BEAM_CLEAR]
+			: [GAP_MIDDLE + BEAM_CLEAR, STAFF_HEIGHT - BEAM_CLEAR];
+		return bars.every((bar) => [bar.y1, bar.y2, bar.y1 + bar.thick, bar.y2 + bar.thick].every((y) => y >= top && y <= bottom));
+	}
+
+	/**
+	 * Gives every segment its parts (engravePart, with the stem direction of its beam group if it has one) and its
+	 * column: startX, width and centerX, left to right from STAFF_LEFT; then each event its span over its segments.
+	 * Returns the x where the music ends.
+	 */
+	function placeColumns(segments, events) {
+		let x = STAFF_LEFT;
+		for (const segment of segments) {
+			// A chord can span both staves; each staff's share gets its own stem, as in piano music.
+			segment.parts = [];
+			for (const staff of ["treble", "bass"]) {
+				if (segment.staves[staff]) {
+					segment.parts.push(engravePart(staff, segment.staves[staff], segment, segment.beams[staff]));
+				}
+			}
+			// What the drawing needs either side of the centre: the parts' reach, or a rest's (with its dot). The left
+			// margin keeps an accidental clear of a cursor line in the gap before it, and leaves a tie room to arc.
+			const { parts } = segment;
+			const tieRoom = segment.tied && parts.length ? TIE_ROOM : 0;
+			const left = parts.length ? Math.max(...parts.map((part) => part.left)) + tieRoom : 11;
+			const right = parts.length ? Math.max(...parts.map((part) => part.right)) : segment.dotted ? 19 : 11;
+			const body = bodyWidth(segment.units / UNITS_PER_BEAT);
+			const lead = Math.max(0, left + CURSOR_NUDGE + 4 - body / 2);
+			segment.startX = x;
+			segment.width = lead + body + Math.max(0, right + 3 - body / 2);
+			segment.centerX = x + lead + body / 2;
+			x += segment.width;
+		}
+		for (const event of events) {
+			const first = event.segments[0];
+			const last = event.segments[event.segments.length - 1];
+			event.startX = first.startX;
+			event.width = last.startX + last.width - first.startX;
+			event.centerX = first.centerX;
+		}
+		return x;
+	}
+
 	/**
 	 * Lays out a list of notes for drawing, clicks and playback, left to right from STAFF_LEFT. Returns { events,
-	 * contentEnd, totalBeats }: one event per note with { note, index, beat (start, in beats), beats, measure, rest,
-	 * parts (engravePart, one per staff it uses), startX, width, centerX }, and the x where the music ends.
-	 *
-	 * A note belongs to the measure it starts in; one that runs past a bar line is not split or tied. Accidentals
-	 * hold for the rest of the measure at that staff position: with no key signature every position starts the
-	 * measure natural, so a sign is printed whenever a note's alter differs from the last one there.
+	 * segments, beams, contentEnd, totalBeats }:
+	 *   - events, one per note: { note, index, beat (start, in beats), beats, measure, rest, segments, startX,
+	 *     width, centerX (its first segment's) }. The cursor, the current note and playback work on these.
+	 *   - segments, every written piece in order (writtenPieces), each its own column: { event, index, start and
+	 *     units (in 32nds), beat, measure, duration and dotted (its written value), tied (continues the one before),
+	 *     staves, beams, parts (engravePart, one per staff it uses), startX, width, centerX }. A note that crosses a
+	 *     bar line has several, tied (rests: split, untied), so no measure overflows and bar lines (barX) fall at
+	 *     the true measure boundaries.
+	 *   - beams: the bars of every beam group (layBeam), and the x where the music ends.
+	 * The order matters: accidentals and beam groups only need the rhythm, the stem directions the groups decide
+	 * change the columns' widths, and a beam needs its columns' x (and may turn its stems, so columns run again).
 	 */
 	function engrave(notes) {
 		const events = [];
-		let x = STAFF_LEFT;
-		let beat = 0;
-		let measureOf = -1;
-		let accidentals = new Map();
+		const segments = [];
+		let units = 0;
 		notes.forEach((note, index) => {
-			const beats = noteBeats(note);
-			const measure = Math.floor(beat / BEATS_PER_MEASURE + 1e-9);
-			if (measure !== measureOf) {
-				measureOf = measure;
-				accidentals = new Map();
+			const length = Math.round(noteBeats(note) * UNITS_PER_BEAT);
+			const event = {
+				note,
+				index,
+				beat: units / UNITS_PER_BEAT,
+				beats: length / UNITS_PER_BEAT,
+				measure: Math.floor(units / MEASURE_UNITS),
+				rest: !note.pitches.length,
+				segments: [],
+			};
+			for (const piece of writtenPieces(units, length)) {
+				const segment = {
+					event,
+					index,
+					start: piece.start,
+					units: piece.units,
+					beat: piece.start / UNITS_PER_BEAT,
+					measure: Math.floor(piece.start / MEASURE_UNITS),
+					duration: piece.duration,
+					dotted: piece.dotted,
+					tied: event.segments.length > 0,
+					staves: {},
+					beams: {},
+					parts: [],
+				};
+				event.segments.push(segment);
+				segments.push(segment);
 			}
-			const heads = note.pitches.map((id) => {
-				const pitch = parsePitch(id);
-				const key = `${pitch.octave}:${pitch.step}`;
-				const current = accidentals.has(key) ? accidentals.get(key) : 0;
-				return { pitch, key, accidental: pitch.alter !== current ? pitch.alter : null };
-			});
-			heads.forEach((head) => accidentals.set(head.key, head.pitch.alter));
-			// A chord can span both staves; each staff's share gets its own stem, as in piano music.
-			const parts = [];
-			for (const staff of ["treble", "bass"]) {
-				const own = heads.filter((head) => staffPlacement(head.pitch).staff === staff);
-				if (own.length) {
-					parts.push(engravePart(staff, own, note));
+			events.push(event);
+			units += length;
+		});
+		spellAccidentals(segments);
+		const groups = beamGroups(segments);
+
+		// Columns, then beams. A beam that leaves its staff's band (beamFits) turns its stems around; if it doesn't
+		// fit that way either, its notes keep their flags. Both change stems, and so the columns, which are then laid
+		// out again. Each group only ever moves on a step (its own direction, the other, flags), so this ends.
+		let contentEnd;
+		let beams;
+		let settled = false;
+		while (!settled) {
+			contentEnd = placeColumns(segments, events);
+			beams = [];
+			settled = true;
+			for (const group of groups.filter((g) => !g.flags)) {
+				const bars = layBeam(group);
+				if (beamFits(group, bars)) {
+					beams.push(...bars);
+					continue;
+				}
+				settled = false;
+				if (group.turned) {
+					group.flags = true;
+					group.members.forEach((segment) => delete segment.beams[group.staff]);
+				} else {
+					group.turned = true;
+					group.stemDown = !group.stemDown;
 				}
 			}
-
-			// What the drawing needs either side of the centre: the parts' reach, or a rest's (with its dot). The left
-			// margin keeps an accidental clear of a cursor line in the gap before it.
-			const left = parts.length ? Math.max(...parts.map((part) => part.left)) : 11;
-			const right = parts.length ? Math.max(...parts.map((part) => part.right)) : note.dotted ? 19 : 11;
-			const body = bodyWidth(beats);
-			const lead = Math.max(0, left + CURSOR_NUDGE + 4 - body / 2);
-			const width = lead + body + Math.max(0, right + 3 - body / 2);
-			events.push({ note, index, beat, beats, measure, rest: !parts.length, parts, startX: x, width, centerX: x + lead + body / 2 });
-			x += width;
-			beat += beats;
-		});
-		return { events, contentEnd: x, totalBeats: beat };
+		}
+		return { events, segments, beams, contentEnd, totalBeats: units / UNITS_PER_BEAT };
 	}
 
-	// The x of the bar line that starts measure `measure` (0 is the first). Inside the music it falls before the
-	// first note at or after the measure's first beat, so a note that runs past a bar line stays whole before it;
-	// past the music, empty measures follow at BEAT_WIDTH a beat.
+	// The x of the bar line that starts measure `measure` (0 is the first). No segment crosses a bar line, so inside
+	// the music it is the start of the first segment on the measure's first beat; past the music, empty measures
+	// follow at BEAT_WIDTH a beat.
 	function barX(layout, measure) {
-		const beat = measure * BEATS_PER_MEASURE;
 		if (measure === 0) {
 			return STAFF_LEFT;
 		}
-		const next = layout.events.find((event) => event.beat >= beat - 1e-9);
-		if (next) {
-			return next.startX;
+		const start = measure * MEASURE_UNITS;
+		const segment = layout.segments.find((s) => s.start >= start);
+		if (segment) {
+			return segment.startX;
 		}
-		return layout.contentEnd + Math.max(0, beat - layout.totalBeats) * BEAT_WIDTH;
+		return layout.contentEnd + Math.max(0, measure * BEATS_PER_MEASURE - layout.totalBeats) * BEAT_WIDTH;
 	}
 
 	// The x of cursor gap `index`: the start of note `index`, or the end of the music.
@@ -1252,9 +1641,11 @@
 		return [...taken].map((position) => heads[0].y - (position - heads[0].position) * LINE_GAP);
 	}
 
-	function drawRest(group, note, centerX) {
-		const { duration } = note;
-		if (note.dotted) {
+	// A rest segment: one written value of a rest (a rest that crosses a bar line is several, untied).
+	function drawRest(group, segment) {
+		const { duration } = segment;
+		const centerX = segment.centerX;
+		if (segment.dotted) {
 			drawDots(group, [TREBLE_TOP + SPACE * 1.5], centerX + 14);
 		}
 		// Whole rest hangs from the 4th treble line; half rest sits on the middle line.
@@ -1267,7 +1658,7 @@
 			return;
 		}
 		// Shorter rests: a stylised block on the middle line (the Rest button's glyph), with one dot above it per flag
-		// the note would have: one for an eighth, two for a sixteenth.
+		// the note would have: one for an eighth, two for a sixteenth, three for a 32nd.
 		const restY = TREBLE_TOP + SPACE * 2;
 		group.appendChild(createSvgEl("rect", {
 			class: "note-head rest",
@@ -1277,17 +1668,18 @@
 			height: 8,
 			rx: 2,
 		}));
-		const flags = duration === 8 ? [0] : duration === 16 ? [-3.5, 3.5] : [];
+		const flags = { 8: [0], 16: [-3.5, 3.5], 32: [-6, 0, 6] }[duration] || [];
 		flags.forEach((dx) => group.appendChild(createSvgEl("circle", { class: "rest-dot", cx: centerX + dx, cy: restY - 9, r: 2 })));
 	}
 
 	/**
-	 * One staff's share of a note or chord (see engravePart): ledger lines, accidentals, heads, the stem from the
-	 * far head to past the near one, flags and dots. Two flags for a sixteenth, on a stem one LINE_GAP longer.
+	 * One staff's share of a note or chord in one segment (see engravePart): ledger lines, accidentals, heads, the
+	 * stem from the far head to past the near one, flags and dots. A beamed part's stem runs to its beam (stemTip)
+	 * and has no flags; otherwise a sixteenth has two flags and a 32nd three, each on a stem a LINE_GAP longer.
 	 */
-	function drawPart(group, part, event) {
-		const cx = event.centerX;
-		const { duration, dotted } = event.note;
+	function drawPart(group, part, segment) {
+		const cx = segment.centerX;
+		const { duration, dotted } = segment;
 		const heads = part.heads;
 		const lowest = heads[0];
 		const highest = heads[heads.length - 1];
@@ -1334,14 +1726,17 @@
 
 		// The stem runs from the head at its far end past the one at its near end, and reaches at least the middle
 		// line.
+		const flags = part.beam ? 0 : beamCount(duration);
 		const middleY = part.bottom - 4 * LINE_GAP;
-		const length = STEM_LENGTH + (duration === 16 ? LINE_GAP : 0);
+		const length = STEM_LENGTH + Math.max(0, flags - 1) * LINE_GAP;
 		const stemX = part.stemDown ? cx - STEM_X : cx + STEM_X;
 		const stemY1 = part.stemDown ? highest.y + 2 : lowest.y - 2;
-		const stemY2 = part.stemDown ? Math.max(lowest.y + length, middleY) : Math.min(highest.y - length, middleY);
-		group.appendChild(createSvgEl("line", { class: "note-stem", x1: stemX, y1: stemY1, x2: stemX, y2: stemY2 }));
+		let stemY2 = part.stemDown ? Math.max(lowest.y + length, middleY) : Math.min(highest.y - length, middleY);
+		if (part.beam) {
+			stemY2 = part.stemTip;
+		}
+		group.appendChild(createSvgEl("line", { class: part.beam ? "note-stem beamed" : "note-stem", x1: stemX, y1: stemY1, x2: stemX, y2: stemY2 }));
 
-		const flags = duration === 8 ? 1 : duration === 16 ? 2 : 0;
 		for (let i = 0; i < flags; i += 1) {
 			const y = part.stemDown ? stemY2 - i * 7 : stemY2 + i * 7;
 			const d = part.stemDown
@@ -1351,15 +1746,68 @@
 		}
 	}
 
-	// One note, chord or rest as <g class="note-group" data-index="i">: playback highlights it by that index. A chord
-	// CHORD_TYPES knows gets its symbol above the treble staff.
+	/**
+	 * Which way the tie from head h of `part` curves, -1 over or 1 under: away from the stem (under a stem-up note,
+	 * over a stem-down one), and over when the two ends' stems disagree. In a chord the upper half curve over and
+	 * the lower half under; a middle head follows the single-note rule.
+	 */
+	function tieDirection(part, next, h) {
+		const single = part.stemDown === next.stemDown && !part.stemDown ? 1 : -1;
+		const n = part.heads.length;
+		if (n === 1 || (n % 2 === 1 && h === (n - 1) / 2)) {
+			return single;
+		}
+		return h >= n / 2 ? -1 : 1;
+	}
+
+	/**
+	 * The ties of a note written as several segments: an arc from every head of each segment to the same pitch in
+	 * the next, staff by staff. A chord's ties start together past its rightmost head (and past the dot of a dotted
+	 * segment) and end together before the next chord's leftmost, so heads set across the stem for a second don't
+	 * cross them; the inner ones are flatter, so ties a step apart don't touch. Each is a filled crescent, thicker
+	 * in the middle, as engraved ties are.
+	 */
+	function drawTies(group, event) {
+		event.segments.slice(0, -1).forEach((segment, s) => {
+			const after = event.segments[s + 1];
+			for (const part of segment.parts) {
+				const next = after.parts.find((other) => other.staff === part.staff);
+				const x1 = segment.centerX + part.headRight + (segment.dotted ? 9.5 : 1.5);
+				const x2 = after.centerX + next.headLeft - 1.5;
+				const span = Math.max(1, x2 - x1);
+				part.heads.forEach((head, h) => {
+					const dir = tieDirection(part, next, h);
+					const outer = h === 0 || h === part.heads.length - 1;
+					const y = head.y + dir * 2.5;
+					const bow = (outer ? clamp(span * 0.22, 4, 9) : clamp(span * 0.1, 2, 3.5)) * dir;
+					const c1 = x1 + span * 0.2;
+					const c2 = x2 - span * 0.2;
+					group.appendChild(createSvgEl("path", {
+						class: "note-tie",
+						d: `M${x1} ${y}C${c1} ${y + bow} ${c2} ${y + bow} ${x2} ${y}C${c2} ${y + bow + dir * 2.2} ${c1} ${y + bow + dir * 2.2} ${x1} ${y}Z`,
+					}));
+				});
+			}
+		});
+	}
+
+	/**
+	 * One note, chord or rest as <g class="note-group" data-index="i">, every segment of it inside, ties included,
+	 * so the current-note tint, playback's highlight (found by that index) and the tooltip cover it all. A chord
+	 * CHORD_TYPES knows gets its symbol above the treble staff, over its first segment.
+	 */
 	function drawEvent(event) {
 		const current = event.index === state.caret - 1;
 		const group = createSvgEl("g", { class: current ? "note-group current" : "note-group", "data-index": event.index });
-		if (event.rest) {
-			drawRest(group, event.note, event.centerX);
-		} else {
-			event.parts.forEach((part) => drawPart(group, part, event));
+		for (const segment of event.segments) {
+			if (event.rest) {
+				drawRest(group, segment);
+			} else {
+				segment.parts.forEach((part) => drawPart(group, part, segment));
+			}
+		}
+		if (!event.rest) {
+			drawTies(group, event);
 			const symbol = chordName(event.note.pitches);
 			if (symbol) {
 				const text = createSvgEl("text", { class: "chord-symbol", x: event.centerX, y: CHORD_SYMBOL_Y });
@@ -1368,9 +1816,27 @@
 			}
 		}
 		const title = createSvgEl("title", {});
-		title.textContent = `Note ${event.index + 1}: ${describeNote(event.note)}`;
+		const split = event.segments.length > 1 ? (event.rest ? ", split at the bar line" : ", tied over the bar line") : "";
+		title.textContent = `Note ${event.index + 1}: ${describeNote(event.note)}${split}`;
 		group.appendChild(title);
 		ui.staffSvg.appendChild(group);
+	}
+
+	// Every beam bar (engrave's layout.beams) as a parallelogram, a little wider than the stems it joins so their
+	// ends are covered. One layer over the notes: a beam belongs to several notes, so no note's group holds it.
+	function drawBeams(layout) {
+		const g = createSvgEl("g", { class: "beams", "aria-hidden": "true" });
+		for (const bar of layout.beams) {
+			const half = 0.8; // half the stem's stroke
+			const points = [
+				[bar.x1 - half, bar.y1],
+				[bar.x2 + half, bar.y2],
+				[bar.x2 + half, bar.y2 + bar.thick],
+				[bar.x1 - half, bar.y1 + bar.thick],
+			].map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join(" ");
+			g.appendChild(createSvgEl("polygon", { class: bar.partial ? "note-beam partial" : "note-beam", "data-level": bar.level, "data-staff": bar.staff, points }));
+		}
+		ui.staffSvg.appendChild(g);
 	}
 
 	// The ruler: a strip along the top with each measure's number at its bar line. Its band is the hit area for
@@ -1380,11 +1846,7 @@
 		g.appendChild(createSvgEl("rect", { class: "ruler-band", x: 0, y: 0, width, height: RULER_HEIGHT }));
 		g.appendChild(createSvgEl("line", { class: "ruler-edge", x1: 0, y1: RULER_HEIGHT - 0.5, x2: width, y2: RULER_HEIGHT - 0.5 }));
 		for (let measure = 0; measure < layout.measureCount; measure += 1) {
-			const x = barX(layout, measure);
-			if (barX(layout, measure + 1) - x < 14) {
-				continue; // bar lines together (a long note crossed both): the music after them is the later measure's
-			}
-			const label = createSvgEl("text", { class: "ruler-number", x: x + 5, y: 15 });
+			const label = createSvgEl("text", { class: "ruler-number", x: barX(layout, measure) + 5, y: 15 });
 			label.textContent = String(measure + 1);
 			g.appendChild(label);
 		}
@@ -1406,9 +1868,9 @@
 
 	/**
 	 * Rebuilds the whole SVG from state.notes and stores the layout in state.layout: paper, ruler, the current note's
-	 * band, both staves, brace, clefs, time signature and bar lines, then one group per note (drawEvent), the cursor,
-	 * the #playhead line and the #ghost layer for hover previews. The staff runs on past the music by at least
-	 * ROOM_AFTER and fills the visible width. Scrolling is left to the caller (revealCursor).
+	 * band, both staves, brace, clefs, time signature and bar lines, then one group per note (drawEvent), the beams,
+	 * the cursor, the #playhead line and the #ghost layer for hover previews. The staff runs on past the music by at
+	 * least ROOM_AFTER and fills the visible width. Scrolling is left to the caller (revealCursor).
 	 */
 	function drawStaff() {
 		const layout = engrave(state.notes);
@@ -1442,7 +1904,8 @@
 		ui.staffSvg.appendChild(createSvgEl("rect", { x: 0, y: 0, width, height, fill: "url(#staffPaper)" }));
 		drawRuler(layout, width);
 
-		// The current note's column, tinted behind everything: what chord tones, ↑ ↓ and Delete will act on.
+		// The current note's columns (all its segments), tinted behind everything: what chord tones, ↑ ↓, a length
+		// change and Delete will act on.
 		const current = layout.events[state.caret - 1];
 		if (current) {
 			ui.staffSvg.appendChild(createSvgEl("rect", {
@@ -1493,6 +1956,7 @@
 		}
 
 		layout.events.forEach(drawEvent);
+		drawBeams(layout);
 		drawCursor(layout);
 
 		ui.staffSvg.appendChild(createSvgEl("line", {
@@ -1510,8 +1974,9 @@
 			? `Sheet music, grand staff: ${count} ${count === 1 ? "note" : "notes"}, cursor ${state.caret === count ? "at the end" : `before note ${state.caret + 1}`}.`
 			: "Sheet music, grand staff, empty.");
 		updateMeta();
-		// The keyboard shows the same current note as the staff.
+		// The keyboard and the length picker show the same current note as the staff.
 		markHeldKeys();
+		markHeldLength();
 		if (state.hover) {
 			showGhost(hitTest(state.hover.x, state.hover.y));
 		}
@@ -1566,8 +2031,9 @@
 	 *   - on the ruler: { kind: "cursor", index }, move the cursor to the nearest gap;
 	 *   - near the cursor line, when it is inside the music: { kind: "insert", pitch, x }, a new note there, unless
 	 *     the pointer is on a head (a short note's head can sit inside that target, wider on touch);
-	 *   - on a note's column at a pitch it has: "remove" that pitch if it is the current chord, else "select" the
-	 *     note (the cursor moves after it); at a pitch it hasn't: "chord", add it as a chord tone;
+	 *   - on a note's column (any of its segments, if tied) at a pitch it has: "remove" that pitch if it is the
+	 *     current chord, else "select" the note (the cursor moves after it); at a pitch it hasn't: "chord", add it
+	 *     as a chord tone;
 	 *   - past the music: { kind: "append", pitch, x }, a new note at the end.
 	 * pitch is from the line or space under the pointer (pitchAtY); x is where the preview head goes. null if none.
 	 */
@@ -1580,12 +2046,14 @@
 		if (!pitch || x < STAFF_LEFT - 4) {
 			return null;
 		}
-		const event = layout.events.find((e) => x >= e.startX && x < e.startX + e.width);
+		// Any segment of a tied note stands for the whole note: a head in it selects or removes, its column adds.
+		const segment = layout.segments.find((s) => x >= s.startX && x < s.startX + s.width);
+		const event = segment ? segment.event : null;
 		let head = null;
-		for (const part of event ? event.parts : []) {
+		for (const part of segment ? segment.parts : []) {
 			head = head || part.heads.find((h) => diatonic(h.pitch) === diatonic(pitch));
 		}
-		const onHead = head && Math.abs(x - (event.centerX + head.offset)) <= HEAD_RX + 3;
+		const onHead = head && Math.abs(x - (segment.centerX + head.offset)) <= HEAD_RX + 3;
 		const cursor = gapX(layout, state.caret) + CURSOR_NUDGE;
 		if (!onHead && state.caret < layout.events.length && Math.abs(x - cursor) <= (coarsePointer.matches ? 16 : 9)) {
 			return { kind: "insert", pitch, x: cursor };
@@ -1596,11 +2064,11 @@
 				kind: current && event.note.pitches.length > 1 ? "remove" : "select",
 				index: event.index,
 				pitch: head.pitch,
-				x: event.centerX + head.offset,
+				x: segment.centerX + head.offset,
 			};
 		}
 		if (event) {
-			return { kind: "chord", index: event.index, pitch, x: event.centerX };
+			return { kind: "chord", index: event.index, pitch, x: segment.centerX };
 		}
 		if (x >= layout.contentEnd) {
 			const beats = noteBeats({ duration: state.selectedDuration, dotted: state.dotted });
@@ -1676,7 +2144,7 @@
 				break;
 			case "select":
 				moveCursor(hit.index + 1, false);
-				setStatus(`Note ${hit.index + 1}: ${describeNote(state.notes[hit.index])}. Click the staff above or below it to add chord tones; Delete removes it.`);
+				setStatus(`Note ${hit.index + 1}: ${describeNote(state.notes[hit.index])}. Click the staff above or below it to add chord tones; Apply gives it the picked length; Delete removes it.`);
 				break;
 			default:
 		}
@@ -1764,6 +2232,7 @@
 		state.playbackToken += 1;
 		state.playing = false;
 		state.sounding = null;
+		state.soundingSegment = 0;
 		silence();
 		document.dispatchEvent(new CustomEvent("notar:playback", { detail: { playing: false } }));
 		ui.playBtn.disabled = false;
@@ -1773,10 +2242,11 @@
 	}
 
 	/**
-	 * Lights the note playing: its group on the staff, every key of it, and the playhead; scroll keeps it about a
-	 * third of the way into the view. The note is found by identity when this runs, so notes inserted or deleted
-	 * before it during playback don't shift the light onto a neighbour; drawStaff calls it again (unscrolled) after
-	 * a redraw mid-note, so the light and the playhead survive the rebuild.
+	 * Lights the note playing: its group on the staff (every segment of a tied note), every key of it, and the
+	 * playhead, on the segment state.soundingSegment; scroll keeps that about a third of the way into the view. The
+	 * note is found by identity when this runs, so notes inserted or deleted before it during playback don't shift
+	 * the light onto a neighbour; drawStaff calls it again (unscrolled) after a redraw mid-note, so the light and
+	 * the playhead survive the rebuild.
 	 */
 	function highlight(note, scroll) {
 		state.sounding = note;
@@ -1796,17 +2266,19 @@
 		if (group) {
 			group.classList.add("active");
 		}
-		setPlayhead(event.centerX, true);
+		const segment = event.segments[state.soundingSegment] || event.segments[0];
+		setPlayhead(segment.centerX, true);
 		if (scroll) {
-			ui.staffScroll.scrollLeft = Math.max(0, event.centerX - ui.staffScroll.clientWidth * 0.35);
+			ui.staffScroll.scrollLeft = Math.max(0, segment.centerX - ui.staffScroll.clientWidth * 0.35);
 		}
 	}
 
 	/**
 	 * Plays state.notes from the cursor (from the start when the cursor is at the end). Each pass schedules all its
 	 * notes on the audio clock at once (playPitches); the staff and key highlights follow on main-thread timers,
-	 * which may fire a little late but never move the sound. Loop is read once, at Play; a loop's later passes start
-	 * from the beginning, and notes added while playing join the next pass.
+	 * which may fire a little late but never move the sound. A tied note is one note: it sounds once, for its whole
+	 * length, while the playhead steps onto each of its segments in time. Loop is read once, at Play; a loop's later
+	 * passes start from the beginning, and notes added while playing join the next pass.
 	 */
 	async function startPlayback() {
 		if (!state.notes.length) {
@@ -1834,11 +2306,17 @@
 				const seconds = noteSeconds(note);
 				playPitches(note.pitches, audioTime, seconds);
 				const highlightAt = Math.max(0, (audioTime - state.audioContext.currentTime) * 1000);
-				window.setTimeout(() => {
-					if (token === state.playbackToken) {
-						highlight(note, true);
-					}
-				}, highlightAt);
+				const event = state.layout.events[index];
+				event.segments.forEach((segment, k) => {
+					const at = highlightAt + ((segment.beat - event.beat) * 60000) / state.bpm;
+					window.setTimeout(() => {
+						// A later segment only moves the light along while its note is still the one sounding.
+						if (token === state.playbackToken && (k === 0 || state.sounding === note)) {
+							state.soundingSegment = k;
+							highlight(note, true);
+						}
+					}, at);
+				});
 				audioTime += seconds;
 			}
 
@@ -1990,6 +2468,8 @@
 		});
 
 		ui.restBtn.addEventListener("click", () => insertNote([]));
+		// Apply: the picker's length and dot, given to the current note (Shift+1–5 and Shift+. on the keyboard).
+		ui.applyLengthBtn.addEventListener("click", () => setCurrentLength(state.selectedDuration, state.dotted));
 		ui.dotBtn.addEventListener("click", () => {
 			setDotted(!state.dotted);
 			setStatus(state.dotted ? "Dotted: new notes are half as long again." : "Dotted off.");
@@ -2040,7 +2520,8 @@
 	/**
 	 * Shortcuts (listed in index.html's footer). None while a field or slider has focus (a length radio doesn't
 	 * count, though it keeps its arrow keys), and none with Alt; with Ctrl or Cmd only undo and redo, so the
-	 * browser's own shortcuts keep working.
+	 * browser's own shortcuts keep working. A digit or the full stop sets the length for new notes; with Shift it
+	 * changes the current note's instead.
 	 */
 	function onKeydown(event) {
 		if (event.target.matches("input:not([type=radio]), textarea, select")) {
@@ -2085,6 +2566,25 @@
 			event.preventDefault();
 			setDotted(!state.dotted);
 			setStatus(`New notes: ${lengthLabel(state.selectedDuration, state.dotted)}.`);
+			return;
+		}
+		// Shift+1–5 and Shift+. are matched on event.code, since Shift turns those keys into symbols that differ
+		// between layouts ("!", "@", ">", ":"). Where a layout needs Shift to type a digit (AZERTY), the digit itself
+		// was read just above and keeps setting the length for new notes, as it always did; where the key types a
+		// letter (Period is V on Dvorak, Ç on Turkish Q; Lithuanian's digit row is Ą Č Ę …), it is that letter, not a
+		// shortcut. A held key changes the note once, as a held note key enters one note.
+		const shiftedCode = event.shiftKey && !/^\p{L}$/u.test(key);
+		if (shiftedCode && (/^Digit[1-5]$/.test(event.code) || event.code === "Period")) {
+			event.preventDefault();
+			if (event.repeat) {
+				return;
+			}
+			const current = state.notes[state.caret - 1];
+			if (event.code === "Period") {
+				setCurrentLength(undefined, current ? !current.dotted : undefined);
+			} else {
+				setCurrentLength(DURATIONS[Number(event.code.slice(-1)) - 1].value);
+			}
 			return;
 		}
 		if (key === " ") {
@@ -2177,11 +2677,29 @@
 	}
 
 	// Test hook: pure helpers and read-only views of state, no mutation. isPlaying is read by pwa.js (no update
-	// while playing); cursor and voices let the tests check where the cursor is and that Stop silences everything.
+	// while playing); cursor and voices let the tests check where the cursor is and that Stop silences everything,
+	// and layout how notes are written (ties, bar lines).
 	window.Notar = {
 		isPlaying: () => state.playing,
 		cursor: () => state.caret,
 		voices: () => voices.size,
+		// The engraving as plain data: every bar line's x, and each note's written segments (a tied note has several).
+		layout: () => ({
+			bars: Array.from({ length: state.layout.measureCount + 1 }, (_, measure) => barX(state.layout, measure)),
+			events: state.layout.events.map((event) => ({
+				index: event.index,
+				beat: event.beat,
+				beats: event.beats,
+				segments: event.segments.map((segment) => ({
+					beat: segment.beat,
+					beats: segment.units / UNITS_PER_BEAT,
+					measure: segment.measure,
+					duration: segment.duration,
+					dotted: segment.dotted,
+					x: segment.startX,
+				})),
+			})),
+		}),
 		parsePitch,
 		pitchId,
 		pitchMidi,

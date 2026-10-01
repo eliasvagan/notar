@@ -19,14 +19,29 @@
 - [x] Export v3; v1/v2 files and saved drafts still load
 - [x] Tests, README, version 1.1.0
 
+## Ties, beams and changing a note's length (October 2026)
+
+- [x] Ties: a note that runs past a bar line is drawn split at it into tied standard values (dots allowed, 32nds
+      where dotted sixteenths leave one), every head of a chord tied; rests split untied. Bar lines fall at the
+      true measure boundaries. Still one note for playback, the cursor, clicks, ↑ ↓ and Delete
+- [x] Ties and accidentals: the continuation repeats none; a later note in the new measure restates its own, and a
+      natural after a tied-over sharp or flat is printed as a reminder
+- [x] Beams for eighths and sixteenths within a beat (rests and longer notes break a group): one stem direction
+      per group, slope from the outer notes (clamped, level for concave shapes), stems lengthened to the beam and
+      to the middle line, secondary and broken beams, chords, a beam per staff; lone notes keep their flags
+- [x] Change the length of an existing note: Apply beside the length picker, Shift+1–5 and Shift+.; the current
+      note's length is edged on the picker; undoable
+- [x] Playback lights every segment of a tied note, and the playhead steps across them
+
 ## Later
 
-- [ ] Beams for eighths and sixteenths within a beat (flags today)
-- [ ] Ties: split a note that runs past a bar line instead of letting the measure overflow
-- [ ] Key and time signatures other than C major and 4/4
+- [ ] Key and time signatures other than C major and 4/4 (beams group by quarter-note beats today; 6/8 needs dotted-quarter beats)
 - [ ] Select a range of notes to copy, paste, delete or transpose together
-- [ ] Change the length of an existing note (today: delete it and enter it again)
 - [ ] MIDI export
+- [ ] Ties the writer chooses (two notes of the same pitch joined), and slurs
+- [ ] Beams: rests inside a beam, cross-staff beams, beams that sit, straddle or hang on staff lines
+- [ ] Ties that also split a note at the half bar in 4/4 where that shows the beat better (a dotted half from beat 2)
+- [ ] A cautionary accidental option beyond the tie reminder (after a bar line in general)
 
 ## Found while commenting the code base
 

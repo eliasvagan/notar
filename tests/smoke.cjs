@@ -9,7 +9,8 @@
  * Starts a static server on a free port, loads the app at phone, iPad
  * (portrait + landscape) and desktop sizes and exercises the keyboard,
  * shortcuts, chords, the cursor, clicks on the staff, undo/redo,
- * tempo/volume/length, import/export and playback.
+ * tempo/volume/length, import/export and playback; then the notation:
+ * ties across bar lines, beams, and changing an existing note's length.
  */
 "use strict";
 
@@ -283,9 +284,12 @@ async function main() {
 				symbol: [...document.querySelectorAll(".chord-symbol")].map((t) => t.textContent).pop(),
 				held: [...document.querySelectorAll(".key.held")].map((k) => k.dataset.pitch),
 				stems: document.querySelector(".note-group.current").querySelectorAll(".note-stem").length,
+				ties: document.querySelector(".note-group.current").querySelectorAll(".note-tie").length,
 			}));
 			assert.strictEqual((await ids()).pop(), "C4+E4+G4");
-			assert.deepStrictEqual(r, { symbol: "C", held: ["C4", "E4", "G4"], stems: 1 });
+			// The half note starts on beat 7½, so it crosses the bar line: an eighth tied to a dotted quarter, one stem
+			// each, and a tie from every head.
+			assert.deepStrictEqual(r, { symbol: "C", held: ["C4", "E4", "G4"], stems: 2, ties: 3 });
 		});
 		await check("the Chord toggle stacks without Shift, and a second press takes a tone out", async () => {
 			await page.click("#chordBtn");
@@ -462,6 +466,250 @@ async function main() {
 		});
 		await check("no console errors during behaviour run", () => assert.deepStrictEqual(errors, []));
 		await page.close();
+
+		// ── Notation: ties, beams, changing a note's length (desktop) ──────
+		console.log("\nnotation");
+		const nErrors = [];
+		const np = await openPage(browser, base, VIEWPORTS[VIEWPORTS.length - 1], nErrors);
+		// Loads a composition as the saved draft (app.js reads it at load); the cursor goes after the last note unless
+		// given. n() is a note: one pitch or a chord ("C4+E4"), "rest" for a rest, a length denominator and a dot.
+		const load = async (list, caret) => {
+			await np.evaluate((draft) => localStorage.setItem("notar-composition-v1", JSON.stringify(draft)), { notes: list, caret: caret === undefined ? list.length : caret });
+			await np.reload({ waitUntil: "networkidle0" });
+		};
+		const n = (pitch, duration, dotted) => ({ pitches: pitch === "rest" ? [] : pitch.split("+"), duration, ...(dotted ? { dotted: true } : {}) });
+		const three = [n("C4", 4), n("D4", 4), n("E4", 4)]; // fills a measure up to its last beat
+		const saved = () => np.evaluate(() => JSON.parse(localStorage.getItem("notar-composition-v1")).notes);
+		const engraved = () => np.evaluate(() => window.Notar.layout());
+		// What note group i draws: counts of its heads, ties, accidentals, stems (beamed ones apart), flags and rests.
+		const drawn = (i) => np.evaluate((index) => {
+			const g = document.querySelector(`.note-group[data-index="${index}"]`);
+			const count = (selector) => g.querySelectorAll(selector).length;
+			return {
+				heads: count(".note-head:not(.rest)"),
+				rests: count(".note-head.rest"),
+				ties: count(".note-tie"),
+				accidentals: count(".accidental"),
+				stems: count(".note-stem"),
+				beamed: count(".note-stem.beamed"),
+				flags: count(".note-flag"),
+			};
+		}, i);
+		// The beams drawn: primary bars (level 1), deeper full bars, and broken (partial) ones.
+		const beams = () => np.evaluate(() => {
+			const bars = [...document.querySelectorAll(".beams .note-beam")];
+			return {
+				primary: bars.filter((b) => b.dataset.level === "1").length,
+				secondary: bars.filter((b) => b.dataset.level !== "1" && !b.classList.contains("partial")).length,
+				partial: bars.filter((b) => b.classList.contains("partial")).length,
+			};
+		});
+		const shift = async (code) => {
+			await np.keyboard.down("Shift");
+			await np.keyboard.press(code);
+			await np.keyboard.up("Shift");
+		};
+
+		await check("ties: a note across a bar line is drawn as tied segments, and stays one note", async () => {
+			await load([...three, n("F4", 2)]);
+			const segments = (await engraved()).events[3].segments.map((s) => [s.beat, s.beats, s.duration]);
+			assert.deepStrictEqual(segments, [[3, 1, 4], [4, 1, 4]]);
+			assert.deepStrictEqual(await drawn(3), { heads: 2, rests: 0, ties: 1, accidentals: 0, stems: 2, beamed: 0, flags: 0 });
+			assert.deepStrictEqual(await saved(), [...three, { pitches: ["F4"], duration: 2 }]);
+		});
+		await check("ties: bar lines fall at the true measure boundaries, so no measure overflows", async () => {
+			await load([n("C4", 4, true), n("D4", 2, true), n("E4", 8), n("F4", 1), n("G4", 16), n("A4", 2, true), n("H4", 1, true), n("rest", 2, true)]);
+			const { bars, events } = await engraved();
+			const segments = events.flatMap((e) => e.segments);
+			const total = segments.reduce((sum, s) => sum + s.beats, 0);
+			for (let m = 0; m * 4 < total; m += 1) {
+				const inside = segments.filter((s) => s.measure === m);
+				assert.ok(inside.every((s) => s.beat >= m * 4 && s.beat + s.beats <= m * 4 + 4 + 1e-9), `a segment leaves measure ${m + 1}`);
+				if ((m + 1) * 4 <= total) {
+					assert.strictEqual(inside.reduce((sum, s) => sum + s.beats, 0), 4, `measure ${m + 1} holds 4 beats`);
+				}
+				assert.strictEqual(bars[m], inside[0].x, `bar line ${m + 1} at the measure's first segment`);
+			}
+		});
+		await check("ties: 2½ beats after a bar line are a half and an eighth; a rest splits with no tie", async () => {
+			await load([...three, n("F4", 8), n("G4", 2, true)]); // G4 from beat 3½: an eighth, then 2½ beats
+			assert.deepStrictEqual((await engraved()).events[4].segments.map((s) => s.duration), [8, 2, 8]);
+			assert.strictEqual((await drawn(4)).ties, 2);
+			await load([...three, n("rest", 2)]);
+			assert.deepStrictEqual(await drawn(3), { heads: 0, rests: 2, ties: 0, accidentals: 0, stems: 0, beamed: 0, flags: 0 });
+		});
+		await check("ties: dotted notes and sixteenths split into standard values", async () => {
+			const split = async (list) => {
+				await load(list);
+				const { events } = await engraved();
+				return events[events.length - 1].segments.map((s) => `${s.duration}${s.dotted ? "." : ""}`);
+			};
+			assert.deepStrictEqual(await split([...three, n("F4", 8), n("G4", 4, true)]), ["8", "4"]);
+			assert.deepStrictEqual(await split([...three, n("F4", 16), n("G4", 16), n("A4", 16), n("H4", 8)]), ["16", "16"]);
+			assert.deepStrictEqual(await split([...three, n("F4", 8), n("G4", 16, true), n("A4", 8)]), ["32", "16."]);
+		});
+		await check("ties: a tied chord ties every head; the continuation repeats no accidental", async () => {
+			await load([...three, n("F#4+A4+C5", 2), n("F4", 4), n("F#4", 4)]);
+			const chord = await drawn(3);
+			assert.deepStrictEqual([chord.heads, chord.ties, chord.accidentals], [6, 3, 1]);
+			// The tie carried F♯ into the new measure: F4 after it gets a natural, and F♯4 after that its sharp again.
+			assert.deepStrictEqual([(await drawn(4)).accidentals, (await drawn(5)).accidentals], [1, 1]);
+			await load([...three, n("F#4", 2), n("F#4", 4)]);
+			assert.strictEqual((await drawn(4)).accidentals, 1, "a later F♯ in the new measure restates its sharp");
+		});
+		await check("ties: the cursor, transposing, clicks on either segment and Delete treat it as one note", async () => {
+			await load([...three, n("F4", 2)]);
+			await np.keyboard.press("ArrowLeft");
+			assert.strictEqual(await np.evaluate(() => window.Notar.cursor()), 3);
+			await np.keyboard.press("ArrowRight");
+			await np.keyboard.press("ArrowUp");
+			assert.deepStrictEqual((await saved())[3], { pitches: ["F#4"], duration: 2 });
+			const heads = await np.evaluate(() => [...document.querySelectorAll('.note-group[data-index="3"] .note-head')]
+				.map((h) => ({ x: Number(h.getAttribute("cx")), y: Number(h.getAttribute("cy")) })));
+			assert.strictEqual(heads[0].y, heads[1].y, "both segments moved");
+			await np.keyboard.press("Home");
+			const click = (x, y) => np.evaluate((sx, sy) => {
+				const svg = document.getElementById("staffSvg");
+				const p = new DOMPoint(sx, sy).matrixTransform(svg.getScreenCTM());
+				svg.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: p.x, clientY: p.y }));
+			}, x, y);
+			await click(heads[1].x, heads[1].y); // the second segment's head selects the note
+			assert.strictEqual(await np.evaluate(() => window.Notar.cursor()), 4);
+			await click(heads[1].x, 126 - 5 * 6); // its column at C5: a chord tone for the whole note
+			assert.deepStrictEqual((await saved())[3].pitches, ["F#4", "C5"]);
+			assert.strictEqual((await drawn(3)).ties, 2);
+			await np.keyboard.press("Backspace");
+			assert.deepStrictEqual(await saved(), three);
+		});
+		await check("ties: playback sounds a tied note once and lights every segment", async () => {
+			await load([...three, n("F4+A4", 2)], 3); // Play from the cursor: the tied chord only
+			await np.click("#playBtn");
+			await np.waitForSelector(".note-group.active", { timeout: 3000 });
+			const r = await np.evaluate(() => ({
+				voices: window.Notar.voices(),
+				heads: document.querySelectorAll(".note-group.active .note-head").length,
+				ties: document.querySelectorAll(".note-group.active .note-tie").length,
+			}));
+			await np.click("#stopBtn");
+			assert.deepStrictEqual(r, { voices: 2, heads: 4, ties: 2 });
+		});
+		await check("beams: eighths are beamed by beat, with no flags", async () => {
+			await load([n("C4", 8), n("D4", 8), n("E4", 8), n("F4", 8)]);
+			assert.deepStrictEqual(await beams(), { primary: 2, secondary: 0, partial: 0 });
+			assert.deepStrictEqual(await np.evaluate(() => [document.querySelectorAll(".note-flag").length, document.querySelectorAll(".note-stem.beamed").length]), [0, 4]);
+		});
+		await check("beams: a group shares the stem direction of its farthest note, and its stems meet the beam", async () => {
+			await load([n("G4", 8), n("C6", 8)]); // G4 alone would be stem up; C6, farther from the middle line, decides
+			const r = await np.evaluate(() => {
+				const stems = [...document.querySelectorAll(".note-stem.beamed")].map((s) => ({ x: Number(s.getAttribute("x1")), tip: Number(s.getAttribute("y2")) }));
+				const heads = [...document.querySelectorAll(".note-group .note-head")].map((h) => Number(h.getAttribute("cx")));
+				const [a, b] = document.querySelector('.note-beam[data-level="1"]').getAttribute("points").split(" ").map((p) => p.split(",").map(Number));
+				const edge = (x) => a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0]);
+				return { down: stems.map((s, i) => s.x < heads[i]), off: stems.map((s) => Math.abs(s.tip - edge(s.x))) };
+			});
+			assert.deepStrictEqual(r.down, [true, true]);
+			r.off.forEach((off) => assert.ok(off < 0.5, `stem ends ${off} from the beam`));
+		});
+		await check("beams: sixteenths get a second beam, mixed and dotted rhythms a broken one", async () => {
+			await load([n("C4", 8), n("D4", 16), n("E4", 16)]);
+			assert.deepStrictEqual(await beams(), { primary: 1, secondary: 1, partial: 0 });
+			await load([n("E4", 8, true), n("F4", 16), n("G4", 16), n("A4", 8), n("H4", 16)]);
+			assert.deepStrictEqual(await beams(), { primary: 2, secondary: 0, partial: 3 });
+		});
+		await check("beams: a rest or a quarter breaks a group, and a lone eighth keeps its flag", async () => {
+			await load([n("C4", 8), n("rest", 8), n("D4", 8), n("E4", 8), n("F4", 8), n("G4", 4), n("A4", 8)]);
+			assert.deepStrictEqual(await beams(), { primary: 1, secondary: 0, partial: 0 });
+			assert.deepStrictEqual([(await drawn(0)).flags, (await drawn(4)).flags, (await drawn(6)).flags], [1, 1, 1]);
+		});
+		await check("beams: chords are beamed, each staff with its own beam", async () => {
+			await load([n("C3+E4+G4", 8), n("D3+F4+A4", 8)]);
+			assert.deepStrictEqual(await beams(), { primary: 2, secondary: 0, partial: 0 });
+			assert.strictEqual((await drawn(0)).beamed + (await drawn(1)).beamed, 4);
+		});
+		await check("beams: each staff's beams and beamed stems stay on its side of the gap between the staves", async () => {
+			// Chords across both staves: D4–A5 would beam stems down into the gap, A3–D2 stems up out of the bass.
+			await load([n("A3+D4", 8), n("D2+A5", 8), n("H3+E4", 8), n("E2+G5", 8)]);
+			const r = await np.evaluate(() => {
+				const middle = (126 + 192) / 2; // between the treble staff's bottom line and the bass staff's top line
+				const ys = (bar) => bar.getAttribute("points").split(" ").map((p) => Number(p.split(",")[1]));
+				const bars = [...document.querySelectorAll(".beams .note-beam")];
+				const stems = [...document.querySelectorAll(".note-stem.beamed")].map((s) => [Number(s.getAttribute("y1")), Number(s.getAttribute("y2"))]);
+				return {
+					treble: bars.filter((b) => b.dataset.staff === "treble").length,
+					crossing: bars.filter((b) => (b.dataset.staff === "treble" ? ys(b).some((y) => y > middle) : ys(b).some((y) => y < middle))).length,
+					// A beamed stem that runs across the middle belongs to a beam that crossed it.
+					stemsAcross: stems.filter(([a, b]) => Math.min(a, b) < middle && Math.max(a, b) > middle).length,
+				};
+			});
+			assert.strictEqual(r.crossing, 0, "a beam crosses the middle of the gap");
+			assert.strictEqual(r.stemsAcross, 0, "a beamed stem crosses the middle of the gap");
+			assert.ok(r.treble >= 2, "the treble groups keep their beams (the first turns its stems up)");
+		});
+		await check("beams and ties together: a tied eighth joins the beam of its beat", async () => {
+			await load([...three, n("F4", 8), n("G4", 4, true)]);
+			assert.deepStrictEqual(await beams(), { primary: 1, secondary: 0, partial: 0 });
+			assert.deepStrictEqual(await drawn(4), { heads: 2, rests: 0, ties: 1, accidentals: 0, stems: 2, beamed: 1, flags: 0 });
+		});
+		await check("length: Shift+1–5 and Shift+. change the current note, plain keys only new notes; Undo restores", async () => {
+			await load([n("C4", 4), n("D4", 4)]);
+			await shift("Digit2");
+			assert.deepStrictEqual((await saved())[1], { pitches: ["D4"], duration: 2 });
+			await shift("Period");
+			assert.deepStrictEqual((await saved())[1], { pitches: ["D4"], duration: 2, dotted: true });
+			assert.match(await np.evaluate(() => document.getElementById("status").textContent), /^Changed note 2 to D4 \(dotted 1\/2\)/);
+			assert.strictEqual(await np.evaluate(() => document.querySelector("#durationPicker input:checked").value), "2", "new notes stay 1/4");
+			await np.click("#undoBtn");
+			assert.deepStrictEqual((await saved())[1], { pitches: ["D4"], duration: 2 });
+			await np.click("#undoBtn");
+			assert.deepStrictEqual((await saved())[1], { pitches: ["D4"], duration: 4 });
+		});
+		await check("length: a held Shift+. or Shift+digit changes the note once; a key that types a letter is no shortcut", async () => {
+			await load([n("C4", 4), n("D4", 4)]);
+			const hold = async (code) => {
+				await np.keyboard.down("Shift");
+				for (let i = 0; i < 4; i += 1) {
+					await np.keyboard.down(code); // after the first, these are auto-repeats (event.repeat)
+				}
+				await np.keyboard.up(code);
+				await np.keyboard.up("Shift");
+			};
+			await hold("Period");
+			assert.deepStrictEqual((await saved())[1], { pitches: ["D4"], duration: 4, dotted: true }, "toggled once, not four times");
+			await hold("Digit4"); // the fourth length, 1/8
+			assert.deepStrictEqual((await saved())[1], { pitches: ["D4"], duration: 8, dotted: true });
+			await np.click("#undoBtn");
+			await np.click("#undoBtn");
+			assert.deepStrictEqual((await saved())[1], { pitches: ["D4"], duration: 4 });
+			assert.strictEqual(await np.evaluate(() => document.getElementById("undoBtn").disabled), true, "two holds, two undo steps");
+			// Dvorak's Period key types V: Shift+V there is a letter, not Shift+.
+			await np.evaluate(() => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "V", code: "Period", shiftKey: true, bubbles: true })));
+			assert.deepStrictEqual((await saved())[1], { pitches: ["D4"], duration: 4 });
+		});
+		await check("length: Apply gives the current note the picked length and dot; the picker marks the note's", async () => {
+			await load([n("C4", 4), n("D4", 4)], 1);
+			const held = () => np.evaluate(() => [...document.querySelectorAll("#durationPicker label.held input")].map((i) => i.value)
+				.concat(document.getElementById("dotBtn").classList.contains("held") ? ["dot"] : []));
+			assert.deepStrictEqual(await held(), ["2"]);
+			await np.click('#durationPicker input[value="3"]');
+			await np.click("#dotBtn");
+			await np.click("#applyLengthBtn");
+			assert.deepStrictEqual(await saved(), [n("C4", 8, true), n("D4", 4)]);
+			assert.deepStrictEqual(await held(), ["3", "dot"]);
+			assert.strictEqual(await np.evaluate(() => window.Notar.cursor()), 1, "the cursor stays after the note");
+			await np.click("#undoBtn");
+			assert.deepStrictEqual(await saved(), [n("C4", 4), n("D4", 4)]);
+			await np.evaluate(() => document.activeElement && document.activeElement.blur());
+			await np.keyboard.press("Home");
+			assert.strictEqual(await np.evaluate(() => document.getElementById("applyLengthBtn").disabled), true, "no note before the cursor");
+		});
+		await check("length: a change that makes a note cross a bar line ties it, and says so", async () => {
+			await load([...three, n("F4", 4)]);
+			await shift("Digit2");
+			assert.match(await np.evaluate(() => document.getElementById("status").textContent), /tied over the bar line/);
+			assert.strictEqual((await engraved()).events[3].segments.length, 2);
+		});
+		await check("no console errors during notation run", () => assert.deepStrictEqual(nErrors, []));
+		await np.close();
 	} finally {
 		await browser.close();
 		server.close();

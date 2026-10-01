@@ -4,9 +4,9 @@
  * medium widths, touch screens, phones and reduced motion.
  *
  *   - app.js builds the keyboard and the staff, and shows state through classes (.octave.active and .reach,
- *     .key.struck, .sounding and .held, .keyboard-frame.fade-start and .fade-end, .note-group.active and
- *     .current, .playhead.shown, .ghost.remove, .status.error) and through custom properties: --whites on each
- *     octave's keys, --slot on each black key.
+ *     .key.struck, .sounding and .held, .held on a length chip and the Dot toggle, .keyboard-frame.fade-start and
+ *     .fade-end, .note-group.active and .current, .playhead.shown, .ghost.remove, .status.error) and through
+ *     custom properties: --whites on each octave's keys, --slot on each black key.
  *   - scripts/icons.mjs takes the icon colours from this file by regex: the --accent token, the .key.black and
  *     .key.white.sounding backgrounds and the .key.sounding box-shadow. Keep those as hex colours.
  *   - This file is part of the precached shell: after editing it, run node scripts/sw-version.mjs.
@@ -442,11 +442,12 @@ input[type="range"] {
 	gap: 0.75rem 1.5rem;
 }
 
+/* 0.5rem: a little closer than the length picker's own 0.6rem, so Apply reads with the lengths it applies. */
 .entry-tools {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 0.75rem;
+	gap: 0.5rem;
 }
 
 /* .length-picker is a fieldset: no frame, and min-width: 0, since a fieldset won't shrink below its content. */
@@ -524,6 +525,30 @@ input[type="range"] {
 
 .octave-nav .btn.icon-only:disabled {
 	opacity: 0.3;
+}
+
+/* .held: the current note's length (app.js), edged in the accent like its keys on the keyboard (.key.held below),
+ * so the chosen chip (new notes) and the edged one (the highlighted note) read apart, and Apply joins them. */
+.segmented label.held span {
+	box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+.segmented label.held input:checked + span {
+	box-shadow: inset 0 -3px 0 var(--accent), 0 1px 3px rgba(40, 40, 80, 0.12);
+}
+
+.btn.toggle.held {
+	box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+.btn.toggle.held[aria-pressed="true"] {
+	box-shadow: inset 0 -3px 0 var(--accent), inset 0 0 0 1px var(--accent);
+}
+
+/* Apply: an action, not a mode, so a plain button beside the length it applies (Rest's and Chord's shape). */
+.apply-btn {
+	gap: 0.5rem;
+	padding: 0 0.75rem;
 }
 
 /* Rest: not a pitch, so it lives with note length, not on the keyboard.
@@ -977,6 +1002,12 @@ input[type="range"] {
 	fill: none;
 }
 
+/* Beams and ties are filled shapes (a parallelogram, a crescent) in the stems' ink. */
+.note-beam,
+.note-tie {
+	fill: #2f3d66;
+}
+
 .note-flag {
 	stroke-width: 2;
 	stroke-linecap: round;
@@ -1015,7 +1046,8 @@ input[type="range"] {
 	stroke: #8a6500;
 }
 
-.note-group.active .note-dot {
+.note-group.active .note-dot,
+.note-group.active .note-tie {
 	fill: #8a6500;
 }
 
@@ -1109,6 +1141,15 @@ kbd {
 	flex-wrap: wrap;
 }
 
+/* Below a wide desktop, Rest's and Chord's key hints give way to Apply, so the compose row breaks where it did
+ * before Apply was there (the footer still lists every shortcut, and the buttons' titles name their keys). */
+@media (max-width: 1459px) {
+	.rest-btn .hint,
+	.chord-btn .hint {
+		display: none;
+	}
+}
+
 /* Medium widths: the tools drop under the heading and line up on its left
  * edge (alignment) instead of hanging off the right. */
 @media (max-width: 1099px) {
@@ -1139,6 +1180,29 @@ kbd {
 
 	.key.black:hover {
 		background: #2b2f45;
+	}
+}
+
+/* Tablets: touch has no key hints to give up for Apply, so Apply shows its icon alone (its accessible name and
+ * title stay) and the "Octave" and "Length" labels are visually hidden, as on a small phone (the .sr-only pattern;
+ * screen readers still hear them). That keeps every row as it was before Apply came. A small phone gives Apply a
+ * row with room for its word (below). */
+@media (hover: none) and (pointer: coarse) and (min-width: 480px) {
+	.apply-btn {
+		padding: 0;
+	}
+
+	.apply-btn span {
+		display: none;
+	}
+
+	.octave-nav .tool-label,
+	.length-picker legend {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
 	}
 }
 
@@ -1243,7 +1307,8 @@ kbd {
 		clip: rect(0 0 0 0);
 	}
 
-	/* Lengths and dot fill the first row; "Length" is hidden like "Octave". Rest and Chord share the next. */
+	/* Lengths and dot fill the first row; "Length" is hidden like "Octave". Apply, Rest and Chord share the next,
+	 * Apply first, right under the lengths it applies. */
 	.length-picker {
 		flex: 1 1 100%;
 	}
@@ -1270,6 +1335,7 @@ kbd {
 		padding: 0 0.2rem;
 	}
 
+	.apply-btn,
 	.rest-btn,
 	.chord-btn {
 		flex: 1 1 0;
