@@ -8,7 +8,8 @@
  *
  * Starts a static server on a free port, loads the app at phone, iPad
  * (portrait + landscape) and desktop sizes and exercises the keyboard,
- * shortcuts, staff, undo, tempo/volume/length, import/export and playback.
+ * shortcuts, chords, the cursor, clicks on the staff, undo/redo,
+ * tempo/volume/length, import/export and playback.
  */
 "use strict";
 
@@ -156,6 +157,18 @@ async function main() {
 		const errors = [];
 		const page = await openPage(browser, base, VIEWPORTS[VIEWPORTS.length - 1], errors);
 		const notes = () => page.evaluate(() => JSON.parse(localStorage.getItem("notar-composition-v1") || "{\"notes\":[]}").notes);
+		// Each saved note as one string: its pitches joined by "+" (a chord), or "rest".
+		const ids = async () => (await notes()).map((n) => (n.pitches.length ? n.pitches.join("+") : "rest"));
+		const cursor = () => page.evaluate(() => window.Notar.cursor());
+		// A click on the staff at SVG user coordinates (one unit is one CSS px; see the geometry in app.js), sent as a
+		// synthetic event so the point needn't be scrolled into view.
+		const clickStaff = (x, y) => page.evaluate((sx, sy) => {
+			const svg = document.getElementById("staffSvg");
+			const p = new DOMPoint(sx, sy).matrixTransform(svg.getScreenCTM());
+			svg.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: p.x, clientY: p.y }));
+		}, x, y);
+		// y of a natural pitch on the treble staff: E4 is its bottom line, TREBLE_BOTTOM = 126, a step is 6 units.
+		const trebleY = (stepsAboveE4) => 126 - stepsAboveE4 * 6;
 
 		await check("frequencies follow equal temperament across the range", async () => {
 			const f = await page.evaluate(() => ["C2", "A2", "C4", "A4", "H4", "C6"].map((p) => window.Notar.pitchFrequency(window.Notar.parsePitch(p))));
@@ -177,7 +190,7 @@ async function main() {
 		await page.click('[data-pitch="F#3"]');
 		await page.click('[data-pitch="C6"]');
 		await check("clicking keys adds notes across octaves", async () => {
-			assert.deepStrictEqual((await notes()).map((n) => n.pitch), ["C2", "F#3", "C6"]);
+			assert.deepStrictEqual(await ids(), ["C2", "F#3", "C6"]);
 		});
 		await check("C2 draws two ledger lines, F#3 draws a sharp", async () => {
 			const r = await page.evaluate(() => ({
@@ -204,8 +217,7 @@ async function main() {
 		await page.keyboard.press("d");
 		await page.keyboard.press(" ");
 		await check("shortcuts: A/W/J/K notes, Z/X octave shift, Space rest", async () => {
-			const list = (await notes()).map((n) => n.pitch);
-			assert.deepStrictEqual(list.slice(3), ["C4", "C#4", "H5", "C6", "E3", "rest"]);
+			assert.deepStrictEqual((await ids()).slice(3), ["C4", "C#4", "H5", "C6", "E3", "rest"]);
 		});
 		await check("accidental carries through the measure; natural sign restores", async () => {
 			// C#4 then C4 in the same measure: the second needs a natural.
@@ -220,11 +232,18 @@ async function main() {
 			const r = await page.evaluate(() => [...document.querySelectorAll(".note-group")].map((g) => g.querySelectorAll(".accidental").length));
 			assert.deepStrictEqual(r, [0, 1, 0, 0, 1, 0, 1]);
 		});
-		await check("Backspace undo and Undo button remove notes", async () => {
-			const before = (await notes()).length;
+		await check("Backspace deletes the note before the cursor; Undo and Redo step through it", async () => {
+			const before = await ids();
 			await page.keyboard.press("Backspace");
+			assert.deepStrictEqual(await ids(), before.slice(0, -1));
 			await page.click("#undoBtn");
-			assert.strictEqual((await notes()).length, before - 2);
+			assert.deepStrictEqual(await ids(), before);
+			await page.click("#redoBtn");
+			assert.deepStrictEqual(await ids(), before.slice(0, -1));
+			await page.keyboard.down("Meta");
+			await page.keyboard.press("z");
+			await page.keyboard.up("Meta");
+			assert.deepStrictEqual(await ids(), before);
 		});
 		await check("octave switcher updates active octave and buttons", async () => {
 			await page.click('.octave-tab[data-octave="2"]');
@@ -249,9 +268,137 @@ async function main() {
 			}));
 			assert.strictEqual(r.bpm, "120 BPM");
 			assert.strictEqual(r.vol, "50%");
-			assert.deepStrictEqual(r.saved.notes[r.saved.notes.length - 1], { pitch: "G2", duration: 8 });
+			assert.deepStrictEqual(r.saved.notes[r.saved.notes.length - 1], { pitches: ["G2"], duration: 8 });
 		});
-		await check("export writes version 2 with octave pitches", async () => {
+		await check("Shift stacks keys into a chord, named above the staff, held on the keyboard", async () => {
+			await page.click('.octave-tab[data-octave="4"]');
+			await page.evaluate(() => document.activeElement && document.activeElement.blur());
+			await page.keyboard.press("2"); // half notes
+			await page.keyboard.press("a");
+			await page.keyboard.down("Shift");
+			await page.keyboard.press("d");
+			await page.keyboard.press("g");
+			await page.keyboard.up("Shift");
+			const r = await page.evaluate(() => ({
+				symbol: [...document.querySelectorAll(".chord-symbol")].map((t) => t.textContent).pop(),
+				held: [...document.querySelectorAll(".key.held")].map((k) => k.dataset.pitch),
+				stems: document.querySelector(".note-group.current").querySelectorAll(".note-stem").length,
+			}));
+			assert.strictEqual((await ids()).pop(), "C4+E4+G4");
+			assert.deepStrictEqual(r, { symbol: "C", held: ["C4", "E4", "G4"], stems: 1 });
+		});
+		await check("the Chord toggle stacks without Shift, and a second press takes a tone out", async () => {
+			await page.click("#chordBtn");
+			await page.evaluate(() => document.activeElement && document.activeElement.blur());
+			await page.keyboard.press("j"); // H4: C–E–G–H is Cmaj7
+			const symbol = await page.evaluate(() => [...document.querySelectorAll(".chord-symbol")].map((t) => t.textContent).pop());
+			await page.keyboard.press("j");
+			await page.click("#chordBtn");
+			assert.strictEqual(symbol, "Cmaj7");
+			assert.strictEqual((await ids()).pop(), "C4+E4+G4");
+		});
+		await check("chord names: inversions, sevenths and too few notes", async () => {
+			const r = await page.evaluate(() => [["E4", "G4", "C5"], ["G3", "H3", "D4", "F4"], ["A3", "C4", "E4", "G4"], ["C4", "E4"], ["C4", "C#4", "D4"]]
+				.map((chord) => window.Notar.chordName(chord)));
+			assert.deepStrictEqual(r, ["C/E", "G7", "Am7", null, null]);
+		});
+		await check("number keys and . set the length: a dotted sixteenth is written", async () => {
+			await page.evaluate(() => document.activeElement && document.activeElement.blur());
+			await page.keyboard.press("5");
+			await page.keyboard.press(".");
+			await page.keyboard.press("f");
+			const last = (await notes()).pop();
+			const dots = await page.evaluate(() => document.querySelector(".note-group.current").querySelectorAll(".note-dot, .note-flag").length);
+			await page.keyboard.press(".");
+			await page.keyboard.press("3");
+			assert.deepStrictEqual(last, { pitches: ["F4"], duration: 16, dotted: true });
+			assert.strictEqual(dots, 3); // one dot, two flags
+		});
+		await check("arrow keys transpose the current note: a semitone, or an octave with Shift", async () => {
+			await page.keyboard.press("ArrowUp");
+			const up = (await ids()).pop();
+			await page.keyboard.down("Shift");
+			await page.keyboard.press("ArrowUp");
+			await page.keyboard.up("Shift");
+			const octave = (await ids()).pop();
+			await page.keyboard.press("ArrowDown");
+			assert.deepStrictEqual([up, octave, (await ids()).pop()], ["F#4", "F#5", "F5"]);
+		});
+		await check("the cursor moves with ← → Home End, and new notes go in there", async () => {
+			const before = await ids();
+			await page.keyboard.press("Home");
+			assert.strictEqual(await cursor(), 0);
+			await page.keyboard.press("s"); // D4 at the very start
+			await page.keyboard.press("ArrowRight");
+			await page.keyboard.press(" "); // a rest after the old first note
+			const after = await ids();
+			assert.deepStrictEqual(after.slice(0, 3), ["D4", before[0], "rest"]);
+			assert.strictEqual(await cursor(), 3);
+			await page.keyboard.press("End");
+			assert.strictEqual(await cursor(), after.length);
+		});
+		await check("Delete removes the note after the cursor", async () => {
+			const before = await ids();
+			await page.keyboard.press("Home");
+			await page.keyboard.press("Delete");
+			assert.deepStrictEqual(await ids(), before.slice(1));
+			assert.strictEqual(await cursor(), 0);
+			await page.keyboard.press("End");
+		});
+		await check("clicking the staff appends a note, stacks a chord tone and takes one out", async () => {
+			const width = await page.evaluate(() => document.getElementById("staffSvg").viewBox.baseVal.width);
+			await page.keyboard.press("4"); // eighths
+			await clickStaff(width - 60, trebleY(3)); // past the music, on the A4 space
+			assert.strictEqual((await ids()).pop(), "A4");
+			const x = await page.evaluate(() => Number(document.querySelector(".note-group.current .note-head").getAttribute("cx")));
+			await clickStaff(x, trebleY(5)); // C5, same column: a chord tone
+			assert.strictEqual((await ids()).pop(), "A4+C5");
+			await clickStaff(x, trebleY(3)); // the A4 head of the current chord: out
+			assert.strictEqual((await ids()).pop(), "C5");
+			assert.deepStrictEqual((await notes()).pop(), { pitches: ["C5"], duration: 8 });
+		});
+		await check("the ruler moves the cursor; a click on the cursor line inserts there", async () => {
+			const before = await ids();
+			await clickStaff(86, 10); // the ruler, by the first bar line
+			assert.strictEqual(await cursor(), 0);
+			await clickStaff(87, trebleY(0)); // the cursor line, on the E4 line
+			assert.deepStrictEqual((await ids()).slice(0, 2), ["E4", before[0]]);
+			assert.strictEqual(await cursor(), 1);
+			await page.keyboard.press("End");
+		});
+		await check("Undo after a click past the music puts the cursor back where it was", async () => {
+			const width = await page.evaluate(() => document.getElementById("staffSvg").viewBox.baseVal.width);
+			await page.keyboard.press("Home");
+			await page.keyboard.press("ArrowRight");
+			await clickStaff(width - 60, trebleY(2));
+			await page.click("#undoBtn");
+			assert.strictEqual(await cursor(), 1);
+			await page.keyboard.press("End");
+		});
+		await check("a mouse press on the ruler that ends on the staff writes nothing", async () => {
+			const before = await ids();
+			const at = await page.evaluate(() => {
+				const svg = document.getElementById("staffSvg");
+				const line = document.querySelector(".cursor-line");
+				const scroll = document.getElementById("staffScroll");
+				// A real mouse needs the point on screen: earlier page.click calls may have scrolled the page.
+				scroll.scrollIntoView({ block: "center" });
+				scroll.scrollLeft = Math.max(0, Number(line.getAttribute("x1")) - 200);
+				const m = svg.getScreenCTM();
+				const p = (x, y) => {
+					const q = new DOMPoint(x, y).matrixTransform(m);
+					return { x: q.x, y: q.y };
+				};
+				const x = Number(line.getAttribute("x1"));
+				return { down: p(x, 10), up: p(x + 30, 110) };
+			});
+			await page.mouse.move(at.down.x, at.down.y);
+			await page.mouse.down();
+			await page.mouse.move(at.up.x, at.up.y, { steps: 4 });
+			await page.mouse.up();
+			assert.deepStrictEqual(await ids(), before);
+		});
+		await check("export writes version 3: pitches lists, chords included", async () => {
 			// Read the export instead of downloading it: a one-shot createObjectURL stub hands over the blob's text,
 			// and anchor clicks do nothing.
 			const text = await page.evaluate(() => new Promise((resolve) => {
@@ -261,9 +408,10 @@ async function main() {
 				document.getElementById("exportBtn").click();
 			}));
 			const payload = JSON.parse(text);
-			assert.strictEqual(payload.version, 2);
+			assert.strictEqual(payload.version, 3);
 			assert.strictEqual(payload.bpm, 120);
-			assert.ok(payload.notes.some((n) => n.pitch === "C2"));
+			assert.ok(payload.notes.some((n) => n.pitches.join() === "C2"));
+			assert.ok(payload.notes.some((n) => n.pitches.join() === "C4,E4,G4"));
 		});
 		await check("importing a version-1 file maps C…H to octave 4", async () => {
 			const file = path.join(os.tmpdir(), `notar-v1-${process.pid}.json`);
@@ -272,17 +420,43 @@ async function main() {
 			await input.uploadFile(file);
 			await page.waitForFunction(() => /Imported/.test(document.getElementById("status").textContent));
 			fs.unlinkSync(file);
-			assert.deepStrictEqual((await notes()).map((n) => n.pitch), ["C4", "H4", "rest"]);
+			assert.deepStrictEqual(await ids(), ["C4", "H4", "rest"]);
 		});
-		await check("playback highlights notes and keys, Stop ends it", async () => {
+		await check("importing a version-3 file keeps chords and dots; Undo brings the old notes back", async () => {
+			const before = await ids();
+			const file = path.join(os.tmpdir(), `notar-v3-${process.pid}.json`);
+			const v3 = [{ pitches: ["G3", "D4", "H4"], duration: 2, dotted: true }, { pitches: [], duration: 4 }, { pitches: ["C4", "Q9"], duration: 4 }];
+			fs.writeFileSync(file, JSON.stringify({ version: 3, bpm: 100, notes: v3 }));
+			await (await page.$("#importInput")).uploadFile(file);
+			await page.waitForFunction(() => /Imported 3/.test(document.getElementById("status").textContent));
+			fs.unlinkSync(file);
+			assert.deepStrictEqual(await notes(), [v3[0], v3[1], { pitches: ["C4"], duration: 4 }]);
+			await page.click("#undoBtn");
+			assert.deepStrictEqual(await ids(), before);
+			await page.click("#redoBtn");
+		});
+		await check("playback lights every key of a chord; Stop silences it and hides the playhead", async () => {
 			await page.click("#playBtn");
 			await page.waitForSelector(".note-group.active", { timeout: 3000 });
-			await page.waitForSelector(".key.sounding", { timeout: 3000 });
+			const sounding = await page.evaluate(() => [...document.querySelectorAll(".key.sounding")].map((k) => k.dataset.pitch));
+			const queued = await page.evaluate(() => window.Notar.voices());
 			await page.click("#stopBtn");
-			const r = await page.evaluate(() => ({ active: document.querySelectorAll(".note-group.active").length, play: document.getElementById("playBtn").disabled }));
-			assert.deepStrictEqual(r, { active: 0, play: false });
+			const r = await page.evaluate(() => ({
+				active: document.querySelectorAll(".note-group.active").length,
+				play: document.getElementById("playBtn").disabled,
+				voices: window.Notar.voices(),
+				playhead: getComputedStyle(document.getElementById("playhead")).opacity,
+			}));
+			assert.deepStrictEqual(sounding, ["G3", "D4", "H4"]);
+			assert.strictEqual(queued, 4, "every voice of the pass is queued at once (3 + rest + 1)");
+			assert.deepStrictEqual(r, { active: 0, play: false, voices: 0, playhead: "0" });
 		});
-		await check("Clear empties the composition", async () => {
+		await check("Clear empties the composition, and Undo brings it back", async () => {
+			const before = await ids();
+			await page.click("#clearBtn");
+			assert.strictEqual((await notes()).length, 0);
+			await page.click("#undoBtn");
+			assert.deepStrictEqual(await ids(), before);
 			await page.click("#clearBtn");
 			assert.strictEqual((await notes()).length, 0);
 		});

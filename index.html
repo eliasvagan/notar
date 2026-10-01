@@ -4,7 +4,7 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 	<title>Notar — melody composer</title>
-	<meta name="description" content="Compose and play melodies in the browser with a scrolling staff and Web Audio playback.">
+	<meta name="description" content="Write melodies and chords in the browser on a grand staff: play the keys or click the staff, then hear it with Web Audio playback.">
 	<meta name="theme-color" content="#3b4a7a">
 	<meta name="application-name" content="Notar">
 	<meta name="mobile-web-app-capable" content="yes">
@@ -16,7 +16,7 @@
 	<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
 	<link rel="icon" href="favicon.svg" type="image/svg+xml">
 	<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" sizes="180x180">
-	<link rel="stylesheet" href="styles.css?v=4">
+	<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 	<!--
@@ -28,6 +28,10 @@
 		<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></symbol>
 		<symbol id="i-loop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></g></symbol>
 		<symbol id="i-undo" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></g></symbol>
+		<symbol id="i-redo" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></g></symbol>
+		<symbol id="i-delete" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6-7Z"/><path d="m12 9.5 5 5M17 9.5l-5 5"/></g></symbol>
+		<symbol id="i-dot" viewBox="0 0 24 24"><ellipse cx="8.5" cy="17" rx="4" ry="3" transform="rotate(-20 8.5 17)" fill="currentColor"/><path d="M12.3 16V4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="18" cy="16.5" r="2" fill="currentColor"/></symbol>
+		<symbol id="i-chord" viewBox="0 0 24 24"><g fill="currentColor"><ellipse cx="9" cy="18.5" rx="3.8" ry="2.7" transform="rotate(-20 9 18.5)"/><ellipse cx="9" cy="12.5" rx="3.8" ry="2.7" transform="rotate(-20 9 12.5)"/><ellipse cx="9" cy="6.5" rx="3.8" ry="2.7" transform="rotate(-20 9 6.5)"/></g><path d="M12.6 18V2.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
 		<symbol id="i-trash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/></g></symbol>
 		<symbol id="i-import" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></g></symbol>
 		<symbol id="i-export" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></g></symbol>
@@ -46,9 +50,9 @@
 				</button>
 			</div>
 			<p>
-				A browser-based melody composer. Add notes on a scrolling staff, set tempo and note length,
-				then play your tune with precise Web Audio timing. Four octaves, C2 to C6, on a grand staff.
-				Uses Nordic pitch names (H = B).
+				A browser-based composer for melodies and chords. Play the keys or click the staff: notes go in
+				at the cursor, and you hear each one as you write it. Then play it back with precise Web Audio
+				timing. Four octaves, C2 to C6, on a grand staff. Uses Nordic pitch names (H = B).
 			</p>
 		</header>
 
@@ -70,12 +74,12 @@
 				<div class="staff-footer">
 					<p id="status" class="status" aria-live="polite"></p>
 					<p class="shortcuts">
-						<kbd>A</kbd>–<kbd>K</kbd> white keys · <kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> sharps · <kbd>Z</kbd>/<kbd>X</kbd> octave · <kbd>Space</kbd> rest · <kbd>Enter</kbd> play · <kbd>Esc</kbd> stop · <kbd>⌫</kbd> undo
+						<kbd>A</kbd>–<kbd>K</kbd> white keys · <kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> sharps · <kbd>⇧</kbd> chord · <kbd>Z</kbd>/<kbd>X</kbd> octave · <kbd>1</kbd>–<kbd>5</kbd> length · <kbd>.</kbd> dot · <kbd>Space</kbd> rest · <kbd>←</kbd><kbd>→</kbd> cursor · <kbd>↑</kbd><kbd>↓</kbd> transpose · <kbd>⌫</kbd> delete · <kbd>⌘Z</kbd> undo · <kbd>Enter</kbd> play · <kbd>Esc</kbd> stop
 					</p>
 				</div>
 			</section>
 
-			<!-- Compose: octave switcher, note length and rest share the row above the keys -->
+			<!-- Compose: octave switcher, note length (and dot), rest and chord share the row above the keys -->
 			<section class="panel compose-panel" aria-labelledby="composeHeading">
 				<div class="panel-head">
 					<h2 id="composeHeading">Compose</h2>
@@ -100,16 +104,23 @@
 								<label><input type="radio" name="durationPick" value="1"><span aria-label="Half note">1/2</span></label>
 								<label><input type="radio" name="durationPick" value="2" checked><span aria-label="Quarter note">1/4</span></label>
 								<label><input type="radio" name="durationPick" value="3"><span aria-label="Eighth note">1/8</span></label>
+								<label><input type="radio" name="durationPick" value="4"><span aria-label="Sixteenth note">1/16</span></label>
 							</div>
+							<button id="dotBtn" class="btn toggle icon-only" type="button" aria-pressed="false" aria-label="Dotted note (.)" title="Dotted: new notes are half as long again (.)">
+								<svg class="icon" aria-hidden="true"><use href="#i-dot"/></svg>
+							</button>
 							<!-- The original slider stays the source of truth app.js reads; the radios drive it. -->
 							<div hidden>
-								<input id="duration" type="range" min="0" max="3" step="1" value="2" tabindex="-1">
+								<input id="duration" type="range" min="0" max="4" step="1" value="2" tabindex="-1">
 								<output id="durationLabel" for="duration">1/4</output>
 							</div>
 						</fieldset>
 						<button id="restBtn" class="btn rest-btn" type="button" data-pitch="rest" aria-label="Rest (Space)">
 							<svg class="rest-glyph" viewBox="0 0 24 12" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/></svg>
 							<span>Rest</span><kbd class="hint">space</kbd>
+						</button>
+						<button id="chordBtn" class="btn toggle chord-btn" type="button" aria-pressed="false" title="Chord: keys stack onto the highlighted note instead of adding a new one. Holding Shift does the same.">
+							<svg class="icon" aria-hidden="true"><use href="#i-chord"/></svg><span>Chord</span><kbd class="hint">shift</kbd>
 						</button>
 						</div>
 					</div>
@@ -157,10 +168,16 @@
 			<section class="panel deck edit-panel" aria-labelledby="editHeading">
 				<h2 id="editHeading">Edit</h2>
 				<div class="region segmented actions" role="group" aria-labelledby="editHeading">
-					<button id="undoBtn" class="btn quiet" type="button">
+					<button id="undoBtn" class="btn quiet" type="button" title="Undo (⌘Z or Ctrl+Z)">
 						<svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg><span>Undo</span>
 					</button>
-					<button id="clearBtn" class="btn quiet danger" type="button">
+					<button id="redoBtn" class="btn quiet" type="button" title="Redo (⇧⌘Z or Ctrl+Y)">
+						<svg class="icon" aria-hidden="true"><use href="#i-redo"/></svg><span>Redo</span>
+					</button>
+					<button id="deleteBtn" class="btn quiet" type="button" title="Delete the highlighted note (⌫)">
+						<svg class="icon" aria-hidden="true"><use href="#i-delete"/></svg><span>Delete</span>
+					</button>
+					<button id="clearBtn" class="btn quiet danger" type="button" title="Clear the whole composition (undoable)">
 						<svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span>
 					</button>
 				</div>
@@ -187,7 +204,7 @@
 		</footer>
 	</div>
 
-	<script src="app.js?v=4"></script>
+	<script src="app.js?v=5"></script>
 	<script src="pwa.js"></script>
 </body>
 </html>
