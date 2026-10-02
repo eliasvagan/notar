@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeVersion, shellFiles, stampedVersion } from '../scripts/sw-version.mjs';
+import { packageVersion, shownVersion } from '../scripts/app-version.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const read = (f) => readFileSync(resolve(ROOT, f), 'utf8');
@@ -72,4 +73,8 @@ test('favicon.ico holds 16, 32 and 48 px images', () => {
   const n = ico.readUInt16LE(4);
   const sizes = Array.from({ length: n }, (_, i) => ico.readUInt8(6 + 16 * i));
   assert.deepEqual(sizes, [16, 32, 48]);
+});
+
+test('the footer shows the version in package.json', () => {
+  assert.equal(shownVersion(), packageVersion(), 'stale footer version: run node scripts/app-version.mjs');
 });

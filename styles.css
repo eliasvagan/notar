@@ -1306,6 +1306,16 @@ kbd {
 }
 
 /* ── Page footer ───────────────────────────────────────────────────────── */
+/* The credit carries the release running (.version, stamped from package.json by scripts/app-version.mjs). Its tail,
+ * "rebuilt 2026 · v1.3.0", stays on one line, so a narrow screen breaks after the dash rather than strand the version. */
+.page-footer .credit-tail {
+	white-space: nowrap;
+}
+
+.page-footer .version {
+	font-variant-numeric: tabular-nums;
+}
+
 .page-footer {
 	margin-top: 2rem;
 	font-size: 0.9rem;

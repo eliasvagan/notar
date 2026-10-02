@@ -202,7 +202,8 @@ python3 -m http.server 8000
 Then open `http://localhost:8000`.
 
 Every commit raises the `version` in `package.json` (`npm version patch --no-git-tag-version`); Markdown files and
-the hooks themselves need no bump. `.githooks/pre-commit` enforces it, and `.githooks/pre-push` runs the unit tests
+the hooks themselves need no bump. The bump also stamps the version into the page footer (`scripts/app-version.mjs`,
+run by the `version` script, then `sw-version.mjs`); a unit test fails if the two ever differ. `.githooks/pre-commit` enforces it, and `.githooks/pre-push` runs the unit tests
 before a push, once a clone has run `git config core.hooksPath .githooks`.
 
 ## Tests
