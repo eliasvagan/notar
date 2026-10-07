@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 import { computeVersion, shellFiles, stampedVersion } from '../scripts/sw-version.mjs';
 import { packageVersion, shownVersion } from '../scripts/app-version.mjs';
 
@@ -77,4 +78,20 @@ test('favicon.ico holds 16, 32 and 48 px images', () => {
 
 test('the footer shows the version in package.json', () => {
   assert.equal(shownVersion(), packageVersion(), 'stale footer version: run node scripts/app-version.mjs');
+});
+
+test('an update applies itself only when Notar is idle, and never while playing', () => {
+  const window = {};
+  vm.runInNewContext(read('pwa.js'), { window, document: { getElementById: () => null }, navigator: {} });
+  const policy = (st) => ({ ...window.NotarUpdate.policy(st) }); // a plain object of this realm
+  assert.deepEqual(policy({ playing: false, edited: false }), { auto: true, manual: true });
+  assert.deepEqual(policy({ playing: false, edited: true }), { auto: false, manual: true }, 'undo history would go');
+  assert.deepEqual(policy({ playing: true, edited: false }), { auto: false, manual: false });
+});
+
+test('the worker answers SKIP_WAITING, deletes old caches and claims its clients', () => {
+  const sw = read('sw.js');
+  assert.match(sw, /event\.data\?\.type === 'SKIP_WAITING'\) self\.skipWaiting\(\)/);
+  assert.match(sw, /caches\.delete\(key\)/);
+  assert.match(sw, /self\.clients\.claim\(\)/);
 });

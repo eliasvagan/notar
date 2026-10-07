@@ -11,7 +11,7 @@
  *     otherwise shows a quiet "update ready" hint (never while playing); it takes over when that is tapped or on
  *     the next launch.
  */
-const VERSION = '03bcaa33bf82';
+const VERSION = '5409e7f3c226';
 const PREFIX = 'notar-shell-';
 const SHELL_CACHE = `${PREFIX}${VERSION}`;
 const SHELL = [
@@ -44,9 +44,9 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-// 'skip-waiting' comes from pwa.js applying an update; 'version' is asked by tests/e2e-pwa.cjs.
+// SKIP_WAITING ({type}) comes from pwa.js applying an update ('skip-waiting' from older pages); 'version' is asked by tests/e2e-pwa.cjs.
 self.addEventListener('message', (event) => {
-  if (event.data === 'skip-waiting') self.skipWaiting();
+  if (event.data === 'skip-waiting' || event.data?.type === 'SKIP_WAITING') self.skipWaiting();
   else if (event.data === 'version') event.source?.postMessage({ version: VERSION });
 });
 

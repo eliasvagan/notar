@@ -153,6 +153,36 @@ async function main() {
 			});
 		}
 
+		if (!live) {
+			await check("idle: a version published while the app is open applies on refocus, with one reload", async () => {
+				await page.reload({ waitUntil: "networkidle0" });
+				await controlled(page);
+				assert.strictEqual(await page.evaluate(() => window.Notar.editedSinceLaunch()), false);
+				// The loop guard allows one reload per 10 s, and the step above has just used it.
+				await page.evaluate(() => sessionStorage.removeItem("notar-sw-reload"));
+				swOverride = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").replace(/const VERSION = '[0-9a-f]*';/, "const VERSION = 'e2e222222222';");
+				let loads = 0;
+				const count = () => {
+					loads += 1;
+				};
+				page.on("load", count);
+				// Coming back to the app (iOS standalone resumes with focus / pageshow, not a load).
+				await Promise.all([
+					page.waitForNavigation({ waitUntil: "networkidle0", timeout: 15000 }),
+					page.evaluate(() => dispatchEvent(new Event("focus"))),
+				]);
+				await controlled(page);
+				await new Promise((r) => setTimeout(r, 1500));
+				page.off("load", count);
+				assert.strictEqual(loads, 1, "exactly one reload");
+				const version = await page.evaluate(() => new Promise((resolve) => {
+					navigator.serviceWorker.addEventListener("message", (e) => resolve(e.data.version), { once: true });
+					navigator.serviceWorker.controller.postMessage("version");
+				}));
+				assert.strictEqual(version, "e2e222222222");
+			});
+		}
+
 		await check("offline: a reload still loads, composes and plays", async () => {
 			await page.setOfflineMode(true);
 			await client.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });

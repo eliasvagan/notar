@@ -112,9 +112,11 @@ included, and one starting at that very instant.
 Notar installs as an app (Add to Home Screen / Install) and works fully offline: `sw.js` precaches the whole
 shell in a cache named after `VERSION`, a hash of the shell files, and serves it cache-first; activation deletes
 older caches. After any change to a shell file run `node scripts/sw-version.mjs` (the unit test fails otherwise).
-A new version downloads in the background and is applied at launch before anything is touched, or from the
-quiet "Update ready" hint in the header, which never shows while playing. Compositions are saved on every
-change, so that reload loses nothing. Audio starts on the first note or Play (browsers need a tap after launch).
+Updates are checked on load and whenever the app comes back (visibility, focus, pageshow: an installed app on
+iOS resumes without a load). A new version applies itself, with one reload, whenever Notar is idle: nothing
+playing and nothing edited since launch (a reload would take the undo history). Otherwise the quiet "Update
+ready" hint shows in the header, never while playing, and a tap applies it. A reload guard stops any update
+loop. Compositions are saved on every change, so that reload loses nothing. Audio starts on the first note or Play (browsers need a tap after launch).
 
 Icons (`favicon.svg`, `favicon.ico`, `icons/`) are drawn by `node scripts/icons.mjs` from the keyboard's own
 colours in `styles.css`.
