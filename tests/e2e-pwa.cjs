@@ -5,9 +5,10 @@
  *   node tests/e2e-pwa.cjs
  *
  * Serves this directory at /projects/notar/ (as on eliasv.com) and checks: Chrome reports no installability or
- * manifest errors; the service worker controls the page; a new version waits, shows the quiet hint only when
+ * manifest errors; in the installed app (display-mode standalone, emulated) the service worker controls the page; a new version waits, shows the quiet hint only when
  * not playing, and applies from it (old cache deleted); an offline reload still composes and plays; and a share
- * link opened while an update waits isn't reloaded away (its Undo still brings back the draft).
+ * link opened while an update waits isn't reloaded away (its Undo still brings back the draft); and a browser tab
+ * removes the worker and its caches.
  * BASE=https://eliasv.com/projects/notar/ runs the installability, control and offline checks against a live site.
  * HOST_RULES is passed to Chrome as --host-resolver-rules, e.g. to send BASE's host name to another server.
  */
@@ -75,6 +76,12 @@ async function check(name, fn) {
 	}
 }
 
+// The installed app: pwa.js registers the worker only in display-mode standalone (or fullscreen).
+const asInstalledApp = (page) => page.evaluateOnNewDocument(() => {
+	const media = window.matchMedia.bind(window);
+	window.matchMedia = (q) => (/display-mode: *(standalone|fullscreen)/.test(q) ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : media(q));
+});
+
 // Resolves once an activated service worker controls the page.
 const controlled = (page) => page.waitForFunction(() => navigator.serviceWorker.controller && navigator.serviceWorker.controller.state === "activated", { timeout: 15000 });
 
@@ -91,6 +98,7 @@ async function main() {
 	const errors = [];
 	try {
 		const page = await browser.newPage();
+		await asInstalledApp(page);
 		page.on("pageerror", (e) => errors.push(e.message));
 		await page.setViewport({ width: 1280, height: 900 });
 		const client = await page.createCDPSession();
@@ -234,6 +242,16 @@ async function main() {
 				assert.ok(!(await page.$eval("#updateBtn", (b) => b.hidden)), "the update is offered instead");
 			});
 		}
+
+		await check("a browser tab removes the worker and its caches, and is not controlled after a reload", async () => {
+			const tab = await browser.newPage();
+			tab.on("pageerror", (e) => errors.push(e.message));
+			await tab.goto(base, { waitUntil: "load" });
+			await tab.waitForFunction(async () => !(await navigator.serviceWorker.getRegistration()) && (await caches.keys()).length === 0, { timeout: 15000 });
+			await tab.reload({ waitUntil: "load" });
+			assert.strictEqual(await tab.evaluate(() => !!navigator.serviceWorker.controller), false);
+			await tab.close();
+		});
 
 		await check("no page errors", () => assert.deepStrictEqual(errors, []));
 	} finally {

@@ -11,7 +11,7 @@
  *     otherwise shows a quiet "update ready" hint (never while playing); it takes over when that is tapped or on
  *     the next launch.
  */
-const VERSION = '5409e7f3c226';
+const VERSION = 'e07447da7925';
 const PREFIX = 'notar-shell-';
 const SHELL_CACHE = `${PREFIX}${VERSION}`;
 const SHELL = [

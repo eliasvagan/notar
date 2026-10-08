@@ -7,6 +7,11 @@
  * replaced). Otherwise the quiet "update ready" hint shows (never while playing), and a tap applies it. The
  * composition and settings are saved on every change, so a reload loses nothing else. A reload guard (one per
  * 10 s) stops any update loop.
+ *
+ * Offline use is for the installed app only (home screen or desktop install: display-mode standalone or fullscreen,
+ * navigator.standalone on iOS). A browser tab never registers the worker: it removes one left by older versions,
+ * with its caches, so it always loads what is deployed, like any page. The installed app registers it again at
+ * its next launch.
  */
 (function () {
 	"use strict";
@@ -24,6 +29,22 @@
 	}
 	const RELOAD_KEY = "notar-sw-reload";
 	const sw = navigator.serviceWorker;
+	const standalone = matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches || navigator.standalone === true;
+	if (!standalone) {
+		(async () => {
+			const scope = new URL("./", location.href).href;
+			const reg = await sw.getRegistration(scope);
+			if (reg && reg.scope === scope) {
+				await reg.unregister();
+			}
+			for (const key of await caches.keys()) {
+				if (key.startsWith("notar-")) {
+					await caches.delete(key);
+				}
+			}
+		})().catch(() => {});
+		return;
+	}
 	let registration = null;
 	let applying = false;
 

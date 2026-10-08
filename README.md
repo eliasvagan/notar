@@ -109,8 +109,9 @@ included, and one starting at that very instant.
 
 ## Installable app
 
-Notar installs as an app (Add to Home Screen / Install) and works fully offline: `sw.js` precaches the whole
-shell in a cache named after `VERSION`, a hash of the shell files, and serves it cache-first; activation deletes
+Notar installs as an app (Add to Home Screen / Install) and the installed app works fully offline. A browser
+tab registers no worker: it removes one left by older versions, with its caches, and loads what is deployed like
+any page. In the app, `sw.js` precaches the whole shell in a cache named after `VERSION`, a hash of the shell files, and serves it cache-first; activation deletes
 older caches. After any change to a shell file run `node scripts/sw-version.mjs` (the unit test fails otherwise).
 Updates are checked on load and whenever the app comes back (visibility, focus, pageshow: an installed app on
 iOS resumes without a load). A new version applies itself, with one reload, whenever Notar is idle: nothing
