@@ -1307,9 +1307,20 @@ kbd {
 
 /* ── Page footer ───────────────────────────────────────────────────────── */
 /* The credit carries the release running (.version, stamped from package.json by scripts/app-version.mjs). Its tail,
- * "rebuilt 2026 · v1.3.0", stays on one line, so a narrow screen breaks after the dash rather than strand the version. */
+ * "rebuilt 2026 · v1.3.0", stays on one line, so a narrow screen breaks before it rather than strand the version. */
 .page-footer .credit-tail {
 	white-space: nowrap;
+}
+
+/* The name links to eliasv.com, quietly: the footer's own grey until pointed at. */
+.page-footer .credit {
+	color: inherit;
+	text-decoration: none;
+}
+
+.page-footer .credit:hover,
+.page-footer .credit:focus-visible {
+	text-decoration: underline;
 }
 
 .page-footer .version {
