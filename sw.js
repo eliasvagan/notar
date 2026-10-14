@@ -10,8 +10,13 @@
  *   - A new worker installs in the background and waits. pwa.js applies it at launch before anything is touched,
  *     otherwise shows a quiet "update ready" hint (never while playing); it takes over when that is tapped or on
  *     the next launch.
+ *   - Each launch of the installed app checks that this address still serves Notar (its sw.js). If something else
+ *     answers there (a 404, or another app's page), Notar was moved or the address now serves another app: the
+ *     worker unregisters, drops its caches and reloads the page into what is really served. A browser never
+ *     removes a worker on its own, so without this an address like http://127.0.0.1:8080/ would keep showing
+ *     Notar over any later app. No answer at all is offline (or a stopped server), and Notar keeps working.
  */
-const VERSION = 'e535c3b289be';
+const VERSION = 'e0576079ce2c';
 const PREFIX = 'notar-shell-';
 const SHELL_CACHE = `${PREFIX}${VERSION}`;
 const SHELL = [
@@ -57,10 +62,36 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return; // not ours: network
   if (request.mode === 'navigate') {
     event.respondWith(navigate(url));
+    event.waitUntil(stillServed().then((served) => served || stepAside(event.resultingClientId)));
     return;
   }
   event.respondWith(caches.match(request, { cacheName: SHELL_CACHE, ignoreSearch: true }).then((hit) => hit || fetch(request)));
 });
+
+/** Whether this address still serves Notar: its worker script, past every cache. Offline or a server error: assume so. */
+async function stillServed() {
+  let response;
+  try {
+    response = await fetch(new URL('sw.js', scope), { cache: 'no-store' });
+  } catch {
+    return true;
+  }
+  if (response.status === 404 || response.status === 410) return false;
+  return !response.ok || (await response.text()).includes(PREFIX);
+}
+
+/**
+ * Notar is gone from this address: unregister, drop its caches, and reload open pages into what is served now. The
+ * page just opened (`opening`) may not be ready for that yet, so it is waited for, up to a few seconds.
+ */
+async function stepAside(opening) {
+  await self.registration.unregister();
+  for (const key of await caches.keys()) if (key.startsWith(PREFIX)) await caches.delete(key);
+  for (let tries = 0; opening && tries < 50 && !(await self.clients.get(opening)); tries++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  for (const client of await self.clients.matchAll({ type: 'window' })) client.navigate(client.url).catch(() => {});
+}
 
 /** The app's own page is the shell; any other page in the scope is tried on the network first. */
 async function navigate(url) {

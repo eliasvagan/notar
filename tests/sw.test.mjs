@@ -36,6 +36,14 @@ test('every precached file exists, and everything the page loads is precached', 
   for (const [, ref] of read('app.js').matchAll(/"(assets\/[^"]+)"/g)) assert.ok(files.includes(ref), `app.js uses ${ref}`);
 });
 
+test('a worker whose address no longer serves Notar steps aside', () => {
+  const sw = read('sw.js');
+  // Every navigation checks sw.js on the network; a 404 or another app's page unregisters and reloads into it
+  assert.match(sw, /event\.waitUntil\(stillServed\(\)\.then\(\(served\) => served \|\| stepAside\(event\.resultingClientId\)\)\)/);
+  assert.match(sw, /async function stillServed[\s\S]*cache: 'no-store'[\s\S]*status === 404[\s\S]*includes\(PREFIX\)/);
+  assert.match(sw, /async function stepAside[\s\S]*registration\.unregister\(\)[\s\S]*caches\.delete[\s\S]*client\.navigate/);
+});
+
 test('activation deletes older shell caches', () => {
   const sw = read('sw.js');
   assert.match(sw, /addEventListener\('activate'[\s\S]*caches\.delete/);

@@ -113,6 +113,10 @@ Notar installs as an app (Add to Home Screen / Install) and the installed app wo
 tab registers no worker: it removes one left by older versions, with its caches, and loads what is deployed like
 any page. In the app, `sw.js` precaches the whole shell in a cache named after `VERSION`, a hash of the shell files, and serves it cache-first; activation deletes
 older caches. After any change to a shell file run `node scripts/sw-version.mjs` (the unit test fails otherwise).
+In the installed app, each launch also checks that its address still serves Notar: if `sw.js` answers 404
+there, or another app's page does, the worker unregisters, drops its caches and reloads into what is served now
+(a browser never removes a worker by itself, so an address like `http://127.0.0.1:8080/` would otherwise keep
+showing Notar over any later app). No answer at all is offline, and Notar keeps working.
 Updates are checked on load and whenever the app comes back (visibility, focus, pageshow: an installed app on
 iOS resumes without a load). A new version applies itself, with one reload, whenever Notar is idle: nothing
 playing and nothing edited since launch (a reload would take the undo history). Otherwise the quiet "Update
