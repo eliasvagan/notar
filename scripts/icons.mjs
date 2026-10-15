@@ -4,7 +4,7 @@
  * between them, the middle key struck and sounding (the .key.white.sounding colours from styles.css), on the
  * accent navy. Drawn on a 32-unit grid where every key edge falls on a whole pixel at 16 and 32 px.
  * Writes favicon.svg, favicon.ico (16/32/48), icons/*.png and media/logo.png (the same keys beside the "Notar"
- * wordmark in the page's Georgia and its accent navy, with a soft white outer glow so it reads on light and dark backgrounds):
+ * wordmark in the page's Georgia and its accent navy,):
  *
  *     PUPPETEER_MODULE=/path/to/node_modules/puppeteer node scripts/icons.mjs
  */
@@ -93,9 +93,8 @@ const LOGO_H = 240;
 await page.setViewport({ width: 1400, height: 400, deviceScaleFactor: 1 });
 await page.setContent(`<!doctype html><style>
 html,body{margin:0;background:transparent}
-.logo{display:inline-flex;align-items:center;gap:${LOGO_H * 0.14}px;padding:${LOGO_H * 0.22}px;
-font:700 ${LOGO_H * 0.56}px/1 Georgia,"Times New Roman",serif;letter-spacing:0.01em;color:${ACCENT};
-filter:drop-shadow(0 0 ${LOGO_H * 0.012}px #fff) drop-shadow(0 0 ${LOGO_H * 0.05}px rgba(255,255,255,.9)) drop-shadow(0 0 ${LOGO_H * 0.12}px rgba(255,255,255,.6))}
+.logo{display:inline-flex;align-items:center;gap:${LOGO_H * 0.14}px;padding:${LOGO_H * 0.04}px;
+font:700 ${LOGO_H * 0.56}px/1 Georgia,"Times New Roman",serif;letter-spacing:0.01em;color:${ACCENT};}
 .logo svg{display:block;width:${LOGO_H * 0.62}px;height:${LOGO_H * 0.62}px}
 </style><div class="logo">${plain}<span>Notar</span></div>`);
 await page.evaluate(() => document.fonts.ready);
