@@ -3,7 +3,8 @@
  * Draws Notar's favicon and app icons: a fragment of its own keyboard, three white keys and the two black keys
  * between them, the middle key struck and sounding (the .key.white.sounding colours from styles.css), on the
  * accent navy. Drawn on a 32-unit grid where every key edge falls on a whole pixel at 16 and 32 px.
- * Writes favicon.svg, favicon.ico (16/32/48) and icons/*.png:
+ * Writes favicon.svg, favicon.ico (16/32/48), icons/*.png and media/logo.png (the same keys beside the "Notar"
+ * wordmark in the page's Georgia and its accent navy, with a white glow so it reads on light and dark backgrounds):
  *
  *     PUPPETEER_MODULE=/path/to/node_modules/puppeteer node scripts/icons.mjs
  */
@@ -86,4 +87,20 @@ images.forEach(([px, data], i) => {
 });
 writeFileSync(resolve(ROOT, 'favicon.ico'), Buffer.concat([header, ...images.map(([, d]) => d)]));
 console.log('favicon.ico 16, 32, 48');
+
+// The logo: the keys, then "Notar" set like the page's h1 (Georgia, accent navy). Trimmed to the drawn pixels.
+const LOGO_H = 240;
+await page.setViewport({ width: 1400, height: 400, deviceScaleFactor: 1 });
+await page.setContent(`<!doctype html><style>
+html,body{margin:0;background:transparent}
+.logo{display:inline-flex;align-items:center;gap:${LOGO_H * 0.14}px;padding:${LOGO_H * 0.1}px;
+font:700 ${LOGO_H * 0.56}px/1 Georgia,"Times New Roman",serif;letter-spacing:0.01em;color:${ACCENT};
+filter:drop-shadow(0 0 ${LOGO_H * 0.03}px rgba(255,255,255,.95)) drop-shadow(0 ${LOGO_H * 0.015}px ${LOGO_H * 0.04}px rgba(0,0,0,.35))}
+.logo svg{display:block;width:${LOGO_H * 0.62}px;height:${LOGO_H * 0.62}px}
+</style><div class="logo">${plain}<span>Notar</span></div>`);
+await page.evaluate(() => document.fonts.ready);
+const box = await (await page.$('.logo')).boundingBox();
+mkdirSync(resolve(ROOT, 'media'), { recursive: true });
+await page.screenshot({ path: resolve(ROOT, 'media/logo.png'), omitBackground: true, clip: box });
+console.log(`media/logo.png ${Math.round(box.width)}x${Math.round(box.height)}`);
 await browser.close();

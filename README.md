@@ -28,6 +28,19 @@ Melody and chord composer for the browser, with scrolling grand staff notation a
 - **Out of Notar:** a share link that carries the composition, MIDI files, SVG and PNG images of the whole sheet,
   and a printout (or PDF) broken into lines of whole measures.
 
+## Media
+
+Built from the app itself by `node tools/media/build.mjs`: the first phrase of Ode to Joy typed into the score on the computer keyboard, then played back with the moving playhead, all on a virtual clock so every run gives the same frames. `node scripts/icons.mjs` draws the logo from the same keys as the app icons. The files and their manifest live in [`media/`](media/media.json).
+
+<p align="center"><img src="media/logo.png" alt="Notar logo" width="480"></p>
+
+![A melody typed into the score, then played back](media/banner.gif)
+
+| | | |
+| --- | --- | --- |
+| ![The finished phrase on the grand staff](media/screenshots/01-score.png) | ![Playback with the playhead and keyboard](media/screenshots/02-playback.png) | ![Notar on a phone](media/screenshots/03-phone.png) |
+| The first phrase of Ode to Joy, typed on the computer keyboard | Playback, the playhead and the keys follow the music | On a phone, playback controls above the score |
+
 ## Writing
 
 The **cursor** (the blue line, with the next note's length on its handle) is where new notes go: keys, the
