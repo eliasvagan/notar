@@ -1,6 +1,6 @@
 # Notar
 
-Browser-based composer for melodies and chords, with grand-staff notation and Web Audio playback.
+Melody and chord composer for the browser, with scrolling grand staff notation and Web Audio playback.
 
 **Live:** [eliasv.com/projects/notar/](https://eliasv.com/projects/notar/)
 

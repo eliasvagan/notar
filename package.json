@@ -1,9 +1,9 @@
 {
   "name": "notar",
   "displayName": "Notar",
-  "version": "1.3.6",
+  "version": "1.3.7",
   "private": true,
-  "description": "Browser-based melody composer with scrolling grand-staff notation and Web Audio playback.",
+  "description": "Melody and chord composer for the browser, with scrolling grand staff notation and Web Audio playback.",
   "scripts": {
     "version": "node scripts/app-version.mjs && node scripts/sw-version.mjs"
   }
