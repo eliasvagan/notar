@@ -8,6 +8,7 @@
 //   out      folder that receives licences.txt (default "."). `--out <dir>` overrides it.
 //   credits  checked in manifest of everything that is not an npm package (default "credits.json", optional)
 //   title    heading of the notice (default package.json displayName or name)
+//   lang     "en" (default) or "nb", the language of the headings and labels
 // npm packages: every production dependency in package-lock.json (dev packages are left out), read from the
 // installed node_modules, with name, version, licence and the full licence text the package ships.
 // credits.json: { "assets": [ { "name", "files": [], "author", "licence", "source", "notes", "licenceFile" } ] }
@@ -26,7 +27,11 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const cfg = pkg.licences ?? {};
 const outDir = path.resolve(root, opt('--out') ?? cfg.out ?? '.');
 const title = cfg.title ?? pkg.displayName ?? pkg.name;
-const RISK = /\b(A?GPL|LGPL|MPL|EPL|CDDL|SSPL|BUSL|NC|UNLICENSED|Unknown|SEE LICENSE|BY-SA)\b/i;
+const T = {
+  en: { sub: 'Third party licences and credits', intro: (v) => `${title}${v ? ` ${v}` : ''} includes the work of others, listed below with their licences.`, assets: 'Assets and credits', pkgs: 'Open source packages', by: 'By', licence: 'Licence', source: 'Source', files: 'Files', home: 'Home', unknown: 'Unknown', noText: (l) => `No licence text is included in the package. Its declared licence is ${l}.`, none: 'This app uses no third party packages or assets.' },
+  nb: { sub: 'Tredjepartslisenser og kreditering', intro: (v) => `${title}${v ? ` ${v}` : ''} bygger på arbeid fra andre. Her er de, med lisensene sine.`, assets: 'Data, ressurser og kreditering', pkgs: 'Pakker med åpen kildekode', by: 'Av', licence: 'Lisens', source: 'Kilde', files: 'Filer', home: 'Nettside', unknown: 'Ukjent', noText: (l) => `Pakken har ingen lisenstekst med seg. Oppgitt lisens er ${l}.`, none: 'Appen bruker ingen pakker eller ressurser fra andre.' },
+}[cfg.lang ?? 'en'];
+const RISK = /\b(A?GPL|LGPL|MPL|EPL|CDDL|SSPL|BUSL|NC|UNLICENSED|Unknown|Ukjent|SEE LICENSE|BY-SA)\b/i;
 const LICENCE_FILE = /^(licen[cs]e|copying|notice)(\.|-|$)/i;
 const warnings = [];
 
@@ -68,15 +73,15 @@ const creditsFile = path.join(root, cfg.credits ?? 'credits.json');
 const assets = fs.existsSync(creditsFile) ? (readJson(creditsFile)?.assets ?? []) : [];
 
 const rule = '='.repeat(72), thin = '-'.repeat(72);
-const lines = [title, 'Third party licences and credits', '', `${title} ${pkg.version} includes the work of others, listed below with their licences.`, ''];
+const lines = [title, T.sub, '', T.intro(pkg.version), ''];
 if (assets.length) {
-  lines.push(rule, 'Assets and credits', rule, '');
+  lines.push(rule, T.assets, rule, '');
   for (const a of assets) {
     lines.push(a.name);
-    if (a.author) lines.push(`By: ${a.author}`);
-    lines.push(`Licence: ${a.licence ?? 'Unknown'}`);
-    if (a.source) lines.push(`Source: ${a.source}`);
-    if (a.files?.length) lines.push(`Files: ${a.files.join(', ')}`);
+    if (a.author) lines.push(`${T.by}: ${a.author}`);
+    lines.push(`${T.licence}: ${a.licence ?? T.unknown}`);
+    if (a.source) lines.push(`${T.source}: ${a.source}`);
+    if (a.files?.length) lines.push(`${T.files}: ${a.files.join(', ')}`);
     if (a.notes) lines.push('', a.notes);
     if (a.licenceFile) lines.push('', fs.readFileSync(path.resolve(root, a.licenceFile), 'utf8').trim());
     lines.push('', thin, '');
@@ -84,16 +89,16 @@ if (assets.length) {
   }
 }
 if (packages.length) {
-  lines.push(rule, 'Open source packages', rule, '');
+  lines.push(rule, T.pkgs, rule, '');
   for (const p of packages) {
-    lines.push(`${p.name} ${p.version}`, `Licence: ${p.licence}`);
-    if (p.author) lines.push(`By: ${p.author}`);
-    if (p.url) lines.push(`Home: ${p.url}`);
-    lines.push('', p.texts.length ? p.texts.join('\n\n') : `No licence text is included in the package. Its declared licence is ${p.licence}.`, '', thin, '');
+    lines.push(`${p.name} ${p.version}`, `${T.licence}: ${p.licence}`);
+    if (p.author) lines.push(`${T.by}: ${p.author}`);
+    if (p.url) lines.push(`${T.home}: ${p.url}`);
+    lines.push('', p.texts.length ? p.texts.join('\n\n') : T.noText(p.licence), '', thin, '');
     if (RISK.test(p.licence)) warnings.push(`package ${p.name}@${p.version}: ${p.licence}`);
   }
 }
-if (!assets.length && !packages.length) lines.push('This app uses no third party packages or assets.', '');
+if (!assets.length && !packages.length) lines.push(T.none, '');
 
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, 'licences.txt'), lines.join('\n'));
