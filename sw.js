@@ -16,13 +16,14 @@
  *     removes a worker on its own, so without this an address like http://127.0.0.1:8080/ would keep showing
  *     Notar over any later app. No answer at all is offline (or a stopped server), and Notar keeps working.
  */
-const VERSION = '15197466fc53';
+const VERSION = '4fc087b473dc';
 const PREFIX = 'notar-shell-';
 const SHELL_CACHE = `${PREFIX}${VERSION}`;
 const SHELL = [
   './',
   'styles.css',
   'app.js',
+  'licences-view.js',
   'pwa.js',
   'manifest.webmanifest',
   'favicon.svg',

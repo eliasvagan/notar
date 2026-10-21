@@ -1613,3 +1613,49 @@ kbd {
 		transform: none;
 	}
 }
+
+/* Licences: the overlay licences-view.js opens over the page (shared markup, see that file). */
+.licences-view {
+	position: fixed;
+	inset: 0;
+	z-index: 1000;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+	background: var(--paper);
+	color: var(--ink);
+}
+.licences-view header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	width: min(100%, 52rem);
+	margin: 0 auto;
+}
+.licences-view h2 { margin: 0; font-size: 1.25rem; }
+.licences-back {
+	font: inherit;
+	color: var(--ink);
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 0.4rem 1rem;
+	cursor: pointer;
+}
+.licences-text {
+	flex: 1;
+	width: min(100%, 52rem);
+	margin: 0 auto;
+	box-sizing: border-box;
+	overflow: auto;
+	padding: 1rem 1.25rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--panel);
+	color: var(--muted);
+	font: 0.8rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}

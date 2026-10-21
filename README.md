@@ -244,6 +244,7 @@ or at `$PUPPETEER_MODULE`.
 
 ## Licences
 
-`npm run build` writes `licences.txt` to the app root, linked as Licences in the footer. The deploy runs it.
-`tools/licences.mjs` (a copy of the shared script in eliasv_com, do not edit it here) lists every production npm package with its licence text, plus the assets declared in `credits.json`.
+`npm run build` writes `licences.txt` to the app root, and the deploy runs it. Licences in the footer opens it in the app as an overlay with a Back button, and `#licences` in the address opens it too. The link still points at the file, so it works without scripts.
+`tools/licences.mjs` writes the file, and `licences-view.js` shows it. Both are copies of the shared files in eliasv_com, do not edit them here.
+The notice lists every production npm package with its licence text, plus the assets declared in `credits.json`.
 Add a credit there when you add a font, icon or sound made by someone else.
