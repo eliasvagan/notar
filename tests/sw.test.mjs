@@ -31,6 +31,7 @@ test('every precached file exists, and everything the page loads is precached', 
   // Relative href and src values, ?v= queries dropped; '#' (<use href="#i-…">) and ':' (absolute URLs) never match.
   for (const [, ref] of html.matchAll(/(?:href|src)="([^"#:]+?)(?:\?[^"]*)?"/g)) {
     if (ref.startsWith('/')) continue; // outside the app (the portfolio)
+    if (ref === 'licences.txt') continue; // written by npm run build, opened online, not part of the offline shell
     assert.ok(files.includes(ref), `index.html uses ${ref}`);
   }
   for (const [, ref] of read('app.js').matchAll(/"(assets\/[^"]+)"/g)) assert.ok(files.includes(ref), `app.js uses ${ref}`);

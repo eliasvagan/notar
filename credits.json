@@ -1,0 +1,9 @@
+{
+  "assets": [
+    {
+      "name": "Treble clef and repeat icons",
+      "licence": "Unknown (no source is recorded, both came with the 2016 version)",
+      "files": ["assets/g-clef.svg", "assets/repeat.svg"]
+    }
+  ]
+}

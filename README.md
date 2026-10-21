@@ -241,3 +241,9 @@ node tests/e2e-pwa.cjs          # installability, control, update flow, offline 
 Puppeteer smoke test across phone, iPad (portrait and landscape) and desktop sizes.
 It finds puppeteer in this repo, in the parent portfolio checkout (`../../node_modules`),
 or at `$PUPPETEER_MODULE`.
+
+## Licences
+
+`npm run build` writes `licences.txt` to the app root, linked as Licences in the footer. The deploy runs it.
+`tools/licences.mjs` (a copy of the shared script in eliasv_com, do not edit it here) lists every production npm package with its licence text, plus the assets declared in `credits.json`.
+Add a credit there when you add a font, icon or sound made by someone else.

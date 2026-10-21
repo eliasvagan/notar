@@ -2,3 +2,5 @@
 Thumbs.db
 *.swp
 *~
+# written by npm run build (tools/licences.mjs)
+/licences.txt
